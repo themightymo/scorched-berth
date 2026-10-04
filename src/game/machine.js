@@ -5,9 +5,10 @@ const BATTLE_LIVE = ['aiming', 'aiThinking', 'handoff', 'projectile', 'resolving
 const RESTART = ['aiming', 'aiThinking', 'handoff', 'briefing'];
 
 export const TRANSITIONS = {
-  title: ['setup', 'briefing', 'armory', 'debrief', 'challenges', 'replays', 'editor', 'tournamentEnd', 'roster'],
+  title: ['setup', 'briefing', 'armory', 'debrief', 'challenges', 'replays', 'editor', 'tournamentEnd', 'roster', 'arsenal'],
   setup: ['title', 'briefing'],
   roster: ['title'],
+  arsenal: ['title'],
   challenges: ['title', 'briefing'],
   replays: ['title', 'replayViewer'],
   replayViewer: ['replays', 'title'],

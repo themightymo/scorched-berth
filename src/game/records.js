@@ -5,7 +5,7 @@ import { KEYS, loadVersioned, saveVersioned } from './storage.js';
 export const RECORDS_VERSION = 1;
 
 export function defaultRecords() {
-  return { v: RECORDS_VERSION, totals: { battles: 0, wins: 0, shots: 0, hits: 0, damage: 0, kills: 0 }, bestTournament: null, tournaments: 0, daily: {}, challenges: {}, recorded: [] };
+  return { v: RECORDS_VERSION, totals: { battles: 0, wins: 0, shots: 0, hits: 0, damage: 0, kills: 0, direct: 0, burns: 0 }, bestTournament: null, tournaments: 0, daily: {}, challenges: {}, recorded: [] };
 }
 
 const n = (v) => Math.max(0, Math.floor(Number(v) || 0));
@@ -33,6 +33,6 @@ export function addBattle(records, id, stat, won) {
   return {
     ...records,
     recorded: [...records.recorded, id].slice(-200),
-    totals: { battles: t.battles + 1, wins: t.wins + (won ? 1 : 0), shots: t.shots + stat.shots, hits: t.hits + stat.hits, damage: t.damage + stat.damage, kills: t.kills + stat.kills },
+    totals: { battles: t.battles + 1, wins: t.wins + (won ? 1 : 0), shots: t.shots + stat.shots, hits: t.hits + stat.hits, damage: t.damage + stat.damage, kills: t.kills + stat.kills, direct: t.direct + (stat.direct ?? 0), burns: t.burns + (stat.burns ?? 0) },
   };
 }

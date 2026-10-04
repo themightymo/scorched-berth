@@ -1,0 +1,18 @@
+#!/bin/sh
+# Rebuilds standalone/scorched-berth.html (the whole game in one file) and
+# adds it to the commit whenever the commit touches the app, so every push
+# carries an up-to-date copy. Installed by `npm install` (the "prepare"
+# script sets core.hooksPath to .githooks).
+#
+# Skip once with:  SKIP_SINGLE_BUILD=1 git commit ...
+
+[ -n "$SKIP_SINGLE_BUILD" ] && exit 0
+
+# GUI git clients (VS Code, GitHub Desktop) run hooks with a minimal PATH.
+PATH="$PATH:/opt/homebrew/bin:/usr/local/bin"
+
+if git diff --cached --name-only | grep -qE '^(src/|index\.html|style\.css|main\.js|package(-lock)?\.json|scripts/build-single\.mjs)'; then
+  echo "pre-commit: rebuilding standalone/scorched-berth.html…"
+  npm run --silent build:single || { echo "pre-commit: single-file build failed; commit aborted." >&2; exit 1; }
+  git add standalone/scorched-berth.html
+fi

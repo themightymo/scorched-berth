@@ -164,6 +164,7 @@ test('tournament retry restores the round start and costs score', () => {
   const start = { credits: run.credits, inventory: { ...run.inventory } };
   const state = createBattle(config);
   state.tanks[0].inventory.heavy = 0;
+  state.tanks[0].inventory.parachute = 0; // the fall after the nuke must still finish the tank
   detonate(state, 'nuke', state.tanks[0].x, state.tanks[0].y - 5, 1);
   applyCommand(state, decideShot(state, state.actor).command);
   runUntilIdle(state);

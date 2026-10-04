@@ -17,10 +17,10 @@ export const START_CREDITS = 260;
 
 export const ROUNDS = [
   { name: 'Border Skirmish', difficulty: ['recruit', 'recruit'], stock: { heavy: 1 }, weather: 'clear', night: false },
-  { name: 'Ridge Contest', difficulty: ['recruit', 'veteran', 'recruit'], stock: { heavy: 1, cluster: 1 }, weather: 'clear', night: false },
-  { name: 'Canyon Crossing', difficulty: ['veteran', 'veteran', 'recruit'], stock: { heavy: 2, napalm: 1, burrow: 1 }, weather: 'rain', night: false },
-  { name: 'Storm Front', difficulty: ['veteran', 'ace', 'veteran'], stock: { heavy: 2, cluster: 1, napalm: 1, burrow: 1 }, weather: 'gale', night: false },
-  { name: 'Grand Final', difficulty: ['ace', 'ace', 'veteran'], stock: { heavy: 3, nuke: 1, cluster: 1, napalm: 1, burrow: 1 }, weather: 'clear', night: true },
+  { name: 'Ridge Contest', difficulty: ['recruit', 'veteran', 'recruit'], stock: { heavy: 1, cluster: 1, repair: 1 }, weather: 'clear', night: false },
+  { name: 'Canyon Crossing', difficulty: ['veteran', 'veteran', 'recruit'], stock: { heavy: 2, napalm: 1, burrow: 1, repair: 1, parachute: 1, shield: 1 }, weather: 'rain', night: false },
+  { name: 'Storm Front', difficulty: ['veteran', 'ace', 'veteran'], stock: { heavy: 2, cluster: 1, napalm: 1, burrow: 1, repair: 1, shield: 1, foam: 1, berm: 1, parachute: 1 }, weather: 'gale', night: false },
+  { name: 'Grand Final', difficulty: ['ace', 'ace', 'veteran'], stock: { heavy: 3, nuke: 1, cluster: 1, napalm: 1, burrow: 1, repair: 1, shield: 2, deflector: 1, anchor: 1, parachute: 1, plating: 1 }, weather: 'clear', night: true },
 ];
 
 export const RANKS = [
@@ -29,7 +29,7 @@ export const RANKS = [
 export const rankFor = (score) => RANKS.filter(([min]) => score >= min).at(-1)[1];
 
 function startInventory() {
-  return { ...emptyInventory(), heavy: 2, cluster: 1 };
+  return { ...emptyInventory(), heavy: 2, cluster: 1, parachute: 1, repair: 1 };
 }
 
 export function createRun({ seed = makeSeedCode(), now = Date.now(), chassis = 'standard' } = {}) {

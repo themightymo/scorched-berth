@@ -10,10 +10,11 @@ import { describe, reasonText } from './log.js';
 import * as S from './screens.js';
 import { editorTemplate, mountEditor } from './editor.js';
 
-import { createBattle, applyCommand, replayBattle, stateDigest } from '../core/engine.js';
+import { createBattle, applyCommand, replayBattle, stateDigest, defenseBlocked } from '../core/engine.js';
+import { DEFENSES, ACTIVE_DEFENSES, getDefense } from '../core/defenses.js';
 import { createStepper } from '../core/clock.js';
 import { trace } from '../core/physics.js';
-import { WEAPONS, getWeapon, hasAmmo, defaultInventory, sanitizeInventory, emptyInventory } from '../core/weapons.js';
+import { WEAPONS, getWeapon, hasAmmo, defaultInventory, sanitizeInventory, emptyInventory, stockInfo } from '../core/weapons.js';
 import { ANGLE_MIN, ANGLE_MAX, POWER_MIN, POWER_MAX } from '../core/constants.js';
 import { clamp } from '../core/math.js';
 import { makeSeedCode, normalizeSeedCode, createRng } from '../core/rng.js';
@@ -34,6 +35,7 @@ import { loadMaps, saveMaps, decodeMap } from '../game/mapformat.js';
 import { CHALLENGES, getChallenge, challengeConfig, challengeStars, dailyConfig, dailyScore, localDateKey } from '../game/challenges.js';
 import { battleStats, battleScore, outcomeFor } from '../game/stats.js';
 import { battleRewards, buy, sell } from '../game/economy.js';
+import { unlockFor, isUnlocked, lockedWeapons, withKit, newlyUnlocked } from '../game/unlocks.js';
 
 const LIVE = new Set(['aiming', 'aiThinking', 'projectile', 'resolving', 'handoff']);
 const AI_DELAY_MS = 750;
@@ -75,6 +77,10 @@ export function startApp() {
   const theme = () => THEMES[settings.theme] ?? THEMES.console;
   const reduced = () => reducedMotion(settings, motionQuery?.matches);
   const profile = () => ({ playerName: settings.playerName, playerColor: settings.playerColor, playerChassis: settings.playerChassis });
+  // ?dev (or ?unlockall) opens the whole arsenal for testing; it never changes the saved record.
+  const unlockOpts = { all: dev || params.has('unlockall') };
+  const starterKit = (inv) => withKit(inv, records, unlockOpts);
+  const lockedSet = () => new Set(lockedWeapons(records, unlockOpts));
 
   // ── Settings application ────────────────────────────────────────────────
   function applySettings() {
@@ -161,7 +167,7 @@ export function startApp() {
   function openSetup(mode, keep = false) {
     if (!keep || !setupModel || setupModel.mode !== mode) setupModel = newSetup(mode);
     machine.go('setup');
-    showScreen(S.setupScreen(setupModel));
+    showScreen(S.setupScreen(setupModel, { locked: lockedSet() }));
   }
   function readSetupForm() {
     const m = setupModel;
@@ -183,7 +189,9 @@ export function startApp() {
         startHp: clamp(Math.round(num('r-hp', 100)), 10, 400), maxTurns: clamp(Math.round(num('r-turns', 160)), 4, 400), walls: v('r-walls') === 'rebound' ? 'rebound' : 'open', unlimitedAmmo: !!$('r-unlimited')?.checked,
       };
       const inv = {};
-      for (const w of WEAPONS) if (!w.ammo.unlimited) inv[w.id] = clamp(Math.round(num(`inv-${w.id}`, 0)), 0, 9);
+      const locked = lockedSet();
+      for (const w of WEAPONS) if (!w.ammo.unlimited && !locked.has(w.id)) inv[w.id] = clamp(Math.round(num(`inv-${w.id}`, 0)), 0, 9);
+      for (const d of DEFENSES) inv[d.id] = clamp(Math.round(num(`inv-${d.id}`, 0)), 0, 9);
       m.inventory = sanitizeInventory(inv);
     }
   }
@@ -195,7 +203,7 @@ export function startApp() {
       map: { profile: m.profile, hazards: m.hazards }, weather: m.weather, night: m.night,
       rules: m.mode === 'sandbox' ? m.rules : {},
       players: m.players.map((p, i) => (p.kind === 'human'
-        ? { kind: 'human', name: (p.name || `Player ${i + 1}`).slice(0, 16), color: p.color, ratings: getChassis(p.chassis).ratings, inventory: hot?.wallets?.[i]?.inventory ?? { ...inv } }
+        ? { kind: 'human', name: (p.name || `Player ${i + 1}`).slice(0, 16), color: p.color, ratings: getChassis(p.chassis).ratings, inventory: hot?.wallets?.[i]?.inventory ?? (m.mode === 'sandbox' ? { ...inv } : starterKit(inv)) }
         : commanderPlayer(p.commander, p.difficulty, { inventory: { ...inv } }))),
     };
   }
@@ -264,6 +272,7 @@ export function startApp() {
     effects.cursor = state.events.length;
     showBattleView();
     renderWeaponList();
+    renderDefenseList();
     $('topbar-status').textContent = `${config.label ?? mode.toUpperCase()} · SEED ${state.seed}`;
     $('field').setAttribute('aria-label', `Battlefield: ${state.tanks.length} tanks. Use the battle log and tank list for details.`);
     nextTurnFlow();
@@ -297,8 +306,10 @@ export function startApp() {
     const t = s.tanks[s.actor];
     const aim = session.aim[s.actor] ?? { angle: t.angle, power: t.power, weapon: 'shell' };
     if (!s.config.rules.unlimitedAmmo && !hasAmmo(t.inventory, aim.weapon)) aim.weapon = 'shell';
+    aim.defense = null; // a defense is chosen fresh each turn so it is never spent by accident
     session.aim[s.actor] = aim;
     renderWeaponList();
+    renderDefenseList();
     updateHud();
     const wind = s.wind === 0 ? 'calm' : `${Math.abs(s.wind)} ${s.wind > 0 ? 'east' : 'west'}`;
     announce(`${t.name}, your turn. Wind ${wind}. Angle ${aim.angle}, power ${aim.power}, ${getWeapon(aim.weapon).name}.`);
@@ -340,7 +351,10 @@ export function startApp() {
     if (machine.state !== 'aiming' || !session) return;
     const s = session.state;
     const aim = session.aim[s.actor];
-    if (!issue({ type: 'fire', actor: s.actor, weapon: aim.weapon, angle: aim.angle, power: aim.power })) return;
+    const cmd = { type: 'fire', actor: s.actor, weapon: aim.weapon, angle: aim.angle, power: aim.power };
+    if (aim.defense) cmd.use = aim.defense;
+    if (!issue(cmd)) return;
+    aim.defense = null;
     audio.play('fire');
   }
 
@@ -401,6 +415,7 @@ export function startApp() {
     audio.play(outcome === 'victory' || (session.humans.length > 1 && s.result.winner != null && s.tanks[s.result.winner].kind === 'human') ? 'victory' : 'defeat');
     // Persist exactly once per battle.
     const stats = battleStats(s);
+    const before = records;
     if (session.mode !== 'sandbox' && session.mode !== 'custom') {
       for (const i of session.humans) records = addBattle(records, `${session.battleId}:${i}`, stats.tanks[i], outcomeFor(s, i) === 'victory');
     }
@@ -420,6 +435,8 @@ export function startApp() {
       session.stars = stars;
     }
     saveRecords(store, records);
+    session.unlocked = newlyUnlocked(before, records);
+    if (session.unlocked.length) audio.play('victory');
     replays = addReplay(replays, makeReplay(s, { title: s.config.label ?? `${session.mode} battle` }));
     saveReplays(store, replays);
     session.replaySaved = true;
@@ -487,7 +504,7 @@ export function startApp() {
         ];
     }
     machine.go('debrief');
-    showScreen(S.debriefScreen({ state: s, stats, me, outcome, mode: session.mode, score, rewards, actions, title, extra, replaySaved: session.replaySaved }));
+    showScreen(S.debriefScreen({ state: s, stats, me, outcome, mode: session.mode, score, rewards, actions, title, extra, replaySaved: session.replaySaved, unlocked: session.unlocked ?? [] }));
   }
 
   // ── Tournament ──────────────────────────────────────────────────────────
@@ -520,31 +537,41 @@ export function startApp() {
 
   function showTournamentEnd() {
     const best = records.bestTournament;
+    let unlocked = [];
     if (!records.recorded.includes(`run:${run.runId}`)) {
+      const before = records;
       const newBest = !best || run.score > best.score;
       records = { ...records, tournaments: records.tournaments + 1, recorded: [...records.recorded, `run:${run.runId}`], bestTournament: newBest ? { score: run.score, rank: T.rankFor(run.score), date: localDateKey() } : best };
       saveRecords(store, records);
+      unlocked = newlyUnlocked(before, records);
     }
     machine.go('tournamentEnd');
-    showScreen(S.tournamentEndScreen(run, best));
+    showScreen(S.tournamentEndScreen(run, best, unlocked));
   }
 
   function openArmory(message = '') {
     machine.go('armory');
     if (session?.mode === 'hotseat' || hot?.shopping) return renderHotArmory(message);
     showScreen(S.armoryScreen({
-      who: settings.playerName, credits: run.credits, inventory: run.inventory, message,
+      who: settings.playerName, credits: run.credits, inventory: run.inventory, message, locks: armoryLocks(),
       heading: `TOURNAMENT · BEFORE ROUND ${run.round + 1}: ${T.ROUNDS[run.round].name.toUpperCase()}`,
       nextLabel: `To briefing: round ${run.round + 1}`,
       history: `Score ${run.score}. Next: ${T.opponentsFor(run, run.round).map((o) => `${getCommander(o.commander).name} (${DIFFICULTY[o.difficulty].name})`).join(', ')}.`,
     }), { focus: !message });
   }
 
+  /** Locked weapon id → { text, have, goal } for the armory cards. */
+  function armoryLocks() {
+    const out = {};
+    for (const id of lockedSet()) { const u = unlockFor(id); out[id] = { text: u.text, have: Math.min(u.goal, Math.floor(Number(u.progress(records)) || 0)), goal: u.goal }; }
+    return out;
+  }
+
   // ── Hot-seat series ─────────────────────────────────────────────────────
   function startHotSeries() {
     const humans = setupModel.players.map((p, i) => (p.kind === 'human' ? i : -1)).filter((i) => i >= 0);
     hot = { round: 1, rounds: setupModel.rounds, wins: {}, wallets: {}, shopping: null, humans };
-    for (const i of humans) { hot.wins[i] = 0; hot.wallets[i] = { credits: 0, inventory: defaultInventory() }; }
+    for (const i of humans) { hot.wins[i] = 0; hot.wallets[i] = { credits: 0, inventory: starterKit(defaultInventory()) }; }
   }
 
   function hotAfterBattle(s, stats) {
@@ -582,7 +609,7 @@ export function startApp() {
       return;
     }
     const wallet = hot.wallets[idx];
-    showScreen(S.armoryScreen({ who: p.name, credits: wallet.credits, inventory: wallet.inventory, message, heading: `HOT-SEAT · BEFORE ROUND ${hot.round}`, nextLabel: sh.index + 1 < sh.order.length ? 'Done: pass to next player' : 'Done: to briefing' }), { focus: !message });
+    showScreen(S.armoryScreen({ who: p.name, credits: wallet.credits, inventory: wallet.inventory, message, locks: armoryLocks(), heading: `HOT-SEAT · BEFORE ROUND ${hot.round}`, nextLabel: sh.index + 1 < sh.order.length ? 'Done: pass to next player' : 'Done: to briefing' }), { focus: !message });
   }
 
   // ── Challenges / daily / editor / replays ───────────────────────────────
@@ -606,7 +633,7 @@ export function startApp() {
       onDelete: (i) => { const keep = editor.map; maps = { ...maps, items: maps.items.filter((_, k) => k !== i) }; saveMaps(store, maps); openEditor(keep); announce('Map deleted.'); },
       onPlay: (map) => {
         const rng = createRng(makeSeedCode());
-        const players = [{ kind: 'human', name: settings.playerName, color: settings.playerColor, ratings: getChassis(settings.playerChassis).ratings }];
+        const players = [{ kind: 'human', name: settings.playerName, color: settings.playerColor, ratings: getChassis(settings.playerChassis).ratings, inventory: starterKit(defaultInventory()) }];
         for (let i = 1; i < map.spawns.length; i++) players.push(commanderPlayer(rng.pick(COMMANDERS).id, 'veteran'));
         const config = { seed: makeSeedCode(), mode: 'custom', label: `Play-test · ${map.name}`, map: { custom: map, name: map.name }, weather: 'clear', night: false, players, shufflePositions: false };
         showBriefing(config, 'custom', { back: 'editor', meta: { map } });
@@ -640,6 +667,7 @@ export function startApp() {
     showBattleView();
     $('topbar-status').textContent = `REPLAY · ${rep.title} · SEED ${rep.config.seed}`;
     renderWeaponList();
+    renderDefenseList();
     updateHud();
     showReplayBar();
     $('field-frame').focus({ preventScroll: true });
@@ -817,9 +845,38 @@ export function startApp() {
     while (log.children.length > 40) log.lastElementChild.remove();
   }
 
+  /**
+   * Weapons shown in this battle's payload list: the standard six, plus any
+   * unlockable weapon a tank started with (or, under unlimited ammunition,
+   * any the player has unlocked). Keys 1–9 and 0 pick the first ten.
+   */
+  function battleArsenal(state) {
+    const started = (id) => state.config.players.some((p) => (p.inventory?.[id] ?? 0) > 0);
+    return WEAPONS.filter((w) => !unlockFor(w.id) || started(w.id) || (state.config.rules.unlimitedAmmo && isUnlocked(records, w.id, unlockOpts))).map((w) => w.id);
+  }
+
   function renderWeaponList() {
-    const list = $('weapon-list');
-    list.innerHTML = WEAPONS.map((w, i) => `<button type="button" role="radio" class="weapon-btn" data-weapon="${w.id}" aria-checked="false" style="--c:${w.presentation.color}"><span class="wkey">${i + 1}</span><span class="glyph" aria-hidden="true">${w.glyph}</span> <span class="wname">${esc(w.short)}</span> <span class="wammo"></span></button>`).join('');
+    session.arsenal = battleArsenal(session.state);
+    const keyFor = (i) => (i < 9 ? String(i + 1) : i === 9 ? '0' : '');
+    $('weapon-list').innerHTML = session.arsenal.map(getWeapon).map((w, i) => `<button type="button" role="radio" class="weapon-btn" data-weapon="${w.id}" aria-checked="false" style="--c:${w.presentation.color}"><span class="wkey">${keyFor(i)}</span><span class="glyph" aria-hidden="true">${w.glyph}</span> <span class="wname">${esc(w.short)}</span> <span class="wammo"></span></button>`).join('');
+    $('weapon-keyhint').textContent = session.arsenal.length > 9 ? '1–0 · [ ]' : `1–${session.arsenal.length} · [ ]`;
+  }
+
+  function renderDefenseList() {
+    $('defense-list').innerHTML = DEFENSES.map((d) => (d.mode === 'active'
+      ? `<button type="button" role="radio" class="weapon-btn" data-defense="${d.id}" aria-checked="false" style="--c:${d.presentation.color}"><span class="glyph" aria-hidden="true">${d.glyph}</span> <span class="wname">${esc(d.short)}</span> <span class="wammo"></span></button>`
+      : `<span class="weapon-btn passive" data-passive="${d.id}" style="--c:${d.presentation.color}" title="${esc(d.name)}: automatic"><span class="glyph" aria-hidden="true">${d.glyph}</span> <span class="wname">${esc(d.short)}</span> <span class="wammo"></span></span>`)).join('');
+  }
+
+  /** Short text for a tank's active protections (shown in the roster). */
+  function effectText(k) {
+    const fx = k.fx ?? {};
+    const parts = [];
+    if (fx.shield > 0) parts.push(`◯${fx.shield}`);
+    if (fx.deflector) parts.push('⟲');
+    if (fx.anchor > 0) parts.push('⚓');
+    if (fx.fireproof > 0) parts.push('❄');
+    return parts.join(' ');
   }
 
   function windText(w) {
@@ -862,7 +919,7 @@ export function startApp() {
     const inv = t.inventory;
     // Only the active human sees ammunition counts; opponents' arsenals stay private.
     const privateInv = !humanTurn;
-    document.querySelectorAll('.weapon-btn').forEach((b) => {
+    document.querySelectorAll('.weapon-btn[data-weapon]').forEach((b) => {
       const w = getWeapon(b.dataset.weapon);
       const available = s.config.rules.unlimitedAmmo || hasAmmo(inv, w.id);
       const selected = shownAim.weapon === w.id;
@@ -872,14 +929,37 @@ export function startApp() {
       b.querySelector('.wammo').textContent = privateInv ? '' : s.config.rules.unlimitedAmmo ? '∞' : w.ammo.unlimited ? '∞' : `×${inv[w.id] ?? 0}`;
       b.setAttribute('aria-label', `${w.name}${privateInv ? '' : `, ${s.config.rules.unlimitedAmmo || w.ammo.unlimited ? 'unlimited' : `${inv[w.id] ?? 0} left`}`}${selected ? ', selected' : ''}`);
     });
+    const chosen = humanTurn && aim ? aim.defense : null;
+    document.querySelectorAll('[data-defense]').forEach((b) => {
+      const d = getDefense(b.dataset.defense);
+      const count = inv[d.id] ?? 0;
+      const why = defenseBlocked(t, d.id);
+      const selected = chosen === d.id;
+      b.setAttribute('aria-checked', String(selected));
+      b.classList.toggle('selected', selected);
+      b.disabled = !humanTurn || (!!why && !selected);
+      b.querySelector('.wammo').textContent = privateInv ? '' : `×${count}`;
+      b.title = privateInv ? d.name : `${d.name}: ${why ?? d.role}`;
+      b.setAttribute('aria-label', `${d.name}${privateInv ? '' : `, ${count} left${why ? `, unavailable: ${why}` : ''}`}${selected ? ', will deploy this turn' : ''}`);
+    });
+    document.querySelectorAll('[data-passive]').forEach((el) => {
+      el.querySelector('.wammo').textContent = privateInv ? '' : `×${inv[el.dataset.passive] ?? 0}`;
+    });
+    const dd = chosen ? getDefense(chosen) : null;
+    $('defense-detail').innerHTML = hideNumbers || privateInv ? ''
+      : dd ? `<b>${esc(dd.name)}</b> will deploy when this turn ends. ${esc(dd.description)}`
+      : 'None selected. Choose one to deploy after this shot (press D to cycle). Dashed items are automatic.';
     const w = getWeapon(shownAim.weapon);
-    $('weapon-detail').innerHTML = hideNumbers ? '' : `<b>${esc(w.name)}</b> — ${esc(w.role)}. Damage ${w.damage.max}${w.projectile.kind === 'cluster' ? ` ×${w.projectile.count}` : ''}, radius ${w.damage.radius} m${privateInv ? '' : `, ammo ${s.config.rules.unlimitedAmmo || w.ammo.unlimited ? '∞' : inv[w.id] ?? 0}`}. ${esc(w.description)}`;
+    const blast = w.damage.max ? `Damage ${w.damage.max}${w.projectile.kind === 'cluster' ? ` ×${w.projectile.count}` : ''}, radius ${w.damage.radius} m` : 'No blast damage';
+    $('weapon-detail').innerHTML = hideNumbers ? '' : `<b>${esc(w.name)}</b> — ${esc(w.role)}. ${blast}${privateInv ? '' : `, ammo ${s.config.rules.unlimitedAmmo || w.ammo.unlimited ? '∞' : inv[w.id] ?? 0}`}. ${esc(w.description)}`;
 
     // Roster: text status for every tank (never colour alone).
     $('hud-roster').innerHTML = `<h2 class="box-title">TANKS</h2><ul class="roster">${s.tanks.map((k, i) => {
       const inFire = k.alive && s.fires.some((f) => k.x >= f.x0 && k.x <= f.x1);
       const who = k.kind === 'human' ? 'Human' : k.kind === 'dummy' ? 'Target' : `${DIFFICULTY[k.difficulty].name} AI`;
-      const status = !k.alive ? 'DESTROYED' : i === s.actor && s.phase !== 'battleOver' ? 'ACTIVE' : inFire ? 'BURNING' : 'READY';
+      const base = !k.alive ? 'DESTROYED' : i === s.actor && s.phase !== 'battleOver' ? 'ACTIVE' : inFire && !(k.fx?.fireproof > 0) ? 'BURNING' : 'READY';
+      const fxText = k.alive ? effectText(k) : '';
+      const status = fxText ? `${base} ${fxText}` : base;
       return `<li class="${i === s.actor ? 'active' : ''} ${k.alive ? '' : 'dead'}" style="--c:${k.color}"><span class="marker" aria-hidden="true">${i === s.actor ? '▶' : k.alive ? '■' : '✕'}</span><span class="rname">${esc(k.name)}<small>${esc(who)}</small></span><span class="hp"><span class="hpbar" aria-hidden="true"><i style="width:${Math.round((k.hp / k.maxHp) * 100)}%"></i></span>${k.hp}/${k.maxHp}</span><span class="rstatus">${status}</span></li>`;
     }).join('')}</ul>`;
   }
@@ -890,7 +970,15 @@ export function startApp() {
     const aim = session.aim[s.actor];
     if (patch.angle != null) aim.angle = clamp(Math.round(patch.angle), ANGLE_MIN, ANGLE_MAX);
     if (patch.power != null) aim.power = clamp(Math.round(patch.power), POWER_MIN, POWER_MAX);
+    if (patch.defense !== undefined) {
+      const id = patch.defense;
+      const why = id && defenseBlocked(s.tanks[s.actor], id);
+      if (why) { audio.play('deny'); announce(why); return; }
+      aim.defense = id;
+      announce(id ? `${getDefense(id).name} will deploy when this turn ends.` : 'No defense this turn.');
+    }
     if (patch.weapon) {
+      if (!session.arsenal?.includes(patch.weapon)) return;
       if (!s.config.rules.unlimitedAmmo && !hasAmmo(s.tanks[s.actor].inventory, patch.weapon)) { audio.play('deny'); announce(`No ${getWeapon(patch.weapon).name} left.`); return; }
       aim.weapon = patch.weapon;
       announce(`${getWeapon(patch.weapon).name} selected.`);
@@ -900,9 +988,18 @@ export function startApp() {
   function cycleWeapon(dir) {
     const s = session.state;
     const t = s.tanks[s.actor];
-    const ids = WEAPONS.map((w) => w.id).filter((id) => s.config.rules.unlimitedAmmo || hasAmmo(t.inventory, id));
+    const ids = session.arsenal.filter((id) => s.config.rules.unlimitedAmmo || hasAmmo(t.inventory, id));
     const i = ids.indexOf(session.aim[s.actor].weapon);
     setAim({ weapon: ids[(i + dir + ids.length) % ids.length] });
+  }
+
+  function cycleDefense() {
+    const s = session.state;
+    const t = s.tanks[s.actor];
+    const ids = [null, ...ACTIVE_DEFENSES.map((d) => d.id).filter((id) => !defenseBlocked(t, id))];
+    if (ids.length === 1) { audio.play('deny'); announce('No defenses available this turn.'); return; }
+    const i = ids.indexOf(session.aim[s.actor].defense ?? null);
+    setAim({ defense: ids[(i + 1) % ids.length] });
   }
 
   function previewPath() {
@@ -912,19 +1009,45 @@ export function startApp() {
     if (s.config.night && mode === 'full') mode = NIGHT.previewCap;
     if (mode === 'off') return null;
     const aim = session.aim[s.actor];
+    const special = specialPreview(s, aim);
+    if (special) return mode === 'partial' ? special.slice(0, Math.max(3, Math.ceil(special.length / 3))) : special;
     const path = [];
     const r = trace({ terrain: s.terrain, tanks: s.tanks, wind: s.wind, gravity: s.config.rules.gravity, walls: s.config.rules.walls }, s.actor, aim.angle, aim.power, { path, sampleEvery: 10 });
     if (r.kind === 'ground' || r.kind === 'tank') path.push({ x: r.x, y: r.y });
     return mode === 'partial' ? path.slice(0, Math.max(3, Math.ceil(path.length / 3))) : path;
   }
 
+  /** Laser: a straight dotted line to the end of its range. Plasma: the blast ring. */
+  function specialPreview(s, aim) {
+    const w = getWeapon(aim.weapon);
+    const t = s.tanks[s.actor];
+    const pr = w.projectile;
+    if (pr.kind === 'plasma') {
+      const u = (aim.power - POWER_MIN) / (POWER_MAX - POWER_MIN);
+      const r = w.damage.radius * (pr.minScale + (1 - pr.minScale) * u);
+      return Array.from({ length: 36 }, (_, k) => ({ x: t.x + Math.cos((k / 36) * Math.PI * 2) * r, y: t.y - 10 + Math.sin((k / 36) * Math.PI * 2) * r }));
+    }
+    if (pr.kind !== 'beam') return null;
+    const rad = (aim.angle * Math.PI) / 180;
+    const dx = Math.cos(rad), dy = -Math.sin(rad);
+    const out = [];
+    let x = t.x + dx * 25, y = t.y - 14 + dy * 25;
+    for (let d = 0; d <= aim.power * pr.rangePerPower; d += 4) {
+      x += dx * 4; y += dy * 4;
+      if (x < 0 || x > s.terrain.length - 1 || y >= s.terrain[Math.round(x)]) break;
+      if (d % 24 === 0) out.push({ x, y });
+    }
+    out.push({ x, y });
+    return out;
+  }
+
   // ── Frame loop ──────────────────────────────────────────────────────────
-  const soundFor = { fire: null, explosion: 'explosion', split: 'split', burrow: 'burrow', ignite: 'ignite', damage: 'hit', eliminated: 'kill', turn: 'turn' };
+  const soundFor = { fire: null, explosion: 'explosion', split: 'split', burrow: 'burrow', ignite: 'ignite', damage: 'hit', eliminated: 'kill', turn: 'turn', defense: 'defense', shieldHit: 'shield', deflect: 'deflect', intercept: 'intercept', parachute: 'chute', hop: 'split', scatter: 'split', roll: 'burrow', buried: 'burrow' };
   function onEngineEvent(e, state) {
     const d = describe(e, state);
     if (d && !(e.t === 'turn' && e.turn === 1)) logLine(d);
     const snd = soundFor[e.t];
-    if (snd === 'explosion') audio.play(snd, Math.min(1.5, getWeapon(e.weapon).crater.radius / 60));
+    if (snd === 'explosion') audio.play(snd, Math.min(1.5, (e.radius ?? getWeapon(e.weapon).crater.radius) / 60));
     else if (snd) audio.play(snd);
     if (e.t === 'fire' && state.tanks[e.by].kind !== 'human') audio.play('fire');
   }
@@ -1012,6 +1135,7 @@ export function startApp() {
       case 'editor': return openEditor();
       case 'replays': return openReplays();
       case 'roster': machine.go('roster'); return showScreen(S.rosterScreen());
+      case 'arsenal': machine.go('arsenal'); return showScreen(S.arsenalScreen(records, unlockOpts));
       case 'reroll-seed': readSetupForm(); setupModel.seed = makeSeedCode(); return openSetup(setupModel.mode, true);
       case 'add-ai': readSetupForm(); setupModel.players.push(randomAi(createRng(makeSeedCode()), setupModel.players.map((p) => p.commander))); return openSetup(setupModel.mode, true);
       case 'add-human': {
@@ -1052,17 +1176,22 @@ export function startApp() {
       case 'buy':
       case 'sell': {
         const fn = action === 'buy' ? buy : sell;
+        if (action === 'buy' && lockedSet().has(arg)) {
+          audio.play('deny');
+          const why = `${stockInfo(arg).name} is locked: ${unlockFor(arg).text}.`;
+          return hot?.shopping ? renderHotArmory(why) : openArmory(why);
+        }
         if (hot?.shopping) {
           const idx = hot.shopping.order[hot.shopping.index];
           const res = fn(hot.wallets[idx], arg);
           if (res.ok) hot.wallets[idx] = { credits: res.credits, inventory: res.inventory };
           audio.play(res.ok ? 'ui' : 'deny');
-          return renderHotArmory(res.ok ? `${action === 'buy' ? 'Bought' : 'Sold'} ${getWeapon(arg).name}.` : res.error);
+          return renderHotArmory(res.ok ? `${action === 'buy' ? 'Bought' : 'Sold'} ${stockInfo(arg).name}.` : res.error);
         }
         const res = fn({ credits: run.credits, inventory: run.inventory }, arg);
         if (res.ok) { run = T.updateWallet(run, res.credits, res.inventory); T.saveRun(store, run); }
         audio.play(res.ok ? 'ui' : 'deny');
-        openArmory(res.ok ? `${action === 'buy' ? 'Bought' : 'Sold'} ${getWeapon(arg).name}.` : res.error);
+        openArmory(res.ok ? `${action === 'buy' ? 'Bought' : 'Sold'} ${stockInfo(arg).name}.` : res.error);
         document.querySelector(`[data-action="${action}"][data-arg="${arg}"]`)?.focus();
         return;
       }
@@ -1130,6 +1259,12 @@ export function startApp() {
     audio.unlock();
     const wb = e.target.closest('[data-weapon]');
     if (wb) return setAim({ weapon: wb.dataset.weapon });
+    const db = e.target.closest('[data-defense]');
+    if (db && session) {
+      // Clicking the selected defense again clears it.
+      const current = session.aim[session.state.actor]?.defense;
+      return setAim({ defense: current === db.dataset.defense ? null : db.dataset.defense });
+    }
     const nb = e.target.closest('[data-nudge]');
     if (nb && session) {
       const [k, d] = nb.dataset.nudge.split(':');
@@ -1210,7 +1345,8 @@ export function startApp() {
         default: break;
       }
       if (lower === 'f') { fireHuman(); return; }
-      if (/^[1-9]$/.test(key)) { const w = WEAPONS[Number(key) - 1]; if (w) setAim({ weapon: w.id }); }
+      if (lower === 'd' && !e.ctrlKey && !e.metaKey) { cycleDefense(); return; }
+      if (/^[0-9]$/.test(key)) { const id = session.arsenal[key === '0' ? 9 : Number(key) - 1]; if (id) setAim({ weapon: id }); }
       return;
     }
 

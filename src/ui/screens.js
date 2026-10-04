@@ -3,6 +3,7 @@
 
 import { html, raw, esc } from './dom.js';
 import { WEAPONS, getWeapon } from '../core/weapons.js';
+import { DEFENSES } from '../core/defenses.js';
 import { MAP_PROFILES, PROFILE_IDS } from '../core/mapgen.js';
 import { WEATHER, WEATHER_IDS, NIGHT } from '../core/weather.js';
 import { COMMANDERS, getCommander, DIFFICULTY, DIFFICULTY_IDS } from '../ai/commanders.js';
@@ -12,6 +13,8 @@ import { CHALLENGES } from '../game/challenges.js';
 import { canBuy, sellPrice, ECONOMY } from '../game/economy.js';
 import { reasonText } from './log.js';
 import { RATING_KEYS, RATING_INFO, RATING_MAX, RATING_BUDGET, CHASSIS, getChassis } from '../core/ratings.js';
+import { UNLOCKS, unlockFor, unlockStatus } from '../game/unlocks.js';
+import { tankPortrait, SPRITE_NOTES } from './sprites.js';
 
 /** Trading-card style stat block: label, 10-segment bar, number. */
 export function ratingCard(ratings, { compact = false } = {}) {
@@ -46,6 +49,7 @@ export function titleScreen({ run, records, notices, dailyKey, daily }) {
         ${btn('sandbox', 'Sandbox')}
         ${btn('editor', 'Map Editor')}
         ${btn('replays', 'Replays')}
+        ${btn('arsenal', `Arsenal · ${UNLOCKS.filter((u) => unlockStatus(records, u.weapon).done).length}/${UNLOCKS.length} unlocked`)}
         ${btn('roster', 'Commander Dossiers')}
         ${btn('open-settings', 'Settings')}
         ${btn('open-help', 'Field Manual')}
@@ -83,7 +87,7 @@ const difficultyOptions = DIFFICULTY_IDS.map((d) => [d, DIFFICULTY[d].name]);
 const colorOptions = TANK_COLORS.map((c) => [c.hex, c.name]);
 
 /** Shared setup screen for quick battle, sandbox, and hot-seat. */
-export function setupScreen(m) {
+export function setupScreen(m, { locked = new Set() } = {}) {
   const titles = { quick: 'QUICK BATTLE', sandbox: 'SANDBOX', hotseat: 'HOT-SEAT' };
   const isSandbox = m.mode === 'sandbox', isHot = m.mode === 'hotseat';
   return html`
@@ -132,7 +136,10 @@ export function setupScreen(m) {
         ${numField('r-turns', 'Turn limit', m.rules.maxTurns, 4, 400)}
         ${selectField('r-walls', 'Side walls', [['open', 'Open: shots leave the field'], ['rebound', 'Rebound: shots bounce back']], m.rules.walls)}
         ${checkField('r-unlimited', 'Unlimited ammunition', m.rules.unlimitedAmmo)}
-        <div class="inv-grid">${WEAPONS.filter((w) => !w.ammo.unlimited).map((w) => numField(`inv-${w.id}`, `${w.name} each`, m.inventory[w.id], 0, 9))}</div>
+        <div class="inv-grid">${WEAPONS.filter((w) => !w.ammo.unlimited && !locked.has(w.id)).map((w) => numField(`inv-${w.id}`, `${w.name} each`, m.inventory[w.id] ?? 0, 0, 9))}</div>
+        ${locked.size ? html`<p class="hint">🔒 ${locked.size} more weapon${locked.size === 1 ? '' : 's'} can be unlocked. See the Arsenal on the title screen.</p>` : ''}
+        <p class="hint">Defenses each (always consumed, even with unlimited ammunition):</p>
+        <div class="inv-grid">${DEFENSES.map((d) => numField(`inv-${d.id}`, d.name, m.inventory[d.id] ?? 0, 0, 9))}</div>
       </fieldset>` : ''}
     </form>
     <div class="actions">
@@ -170,7 +177,7 @@ export function briefingScreen({ config, map, mode, extra }) {
           ${opponents.map((p) => {
             if (p.kind === 'dummy') return html`<li><span class="insignia" aria-hidden="true">◎</span><div><b>${p.name}</b> — stationary target${p.hp ? ` (${p.hp} armour)` : ''}</div></li>`;
             const c = getCommander(p.commander);
-            return html`<li><span class="insignia" style="--c:${c.color}" aria-hidden="true">${c.insignia}</span><div><b>${c.name}</b> · ${DIFFICULTY[p.difficulty].name}<br><span class="muted">${c.title}: ${c.doctrine}</span><br>${ratingCard(p.ratings ?? c.ratings, { compact: true })}</div></li>`;
+            return html`<li><img class="tank-thumb" src="${tankPortrait(c.id, c.color, 2)}" width="68" height="56" alt=""><div><b>${c.name}</b> · ${DIFFICULTY[p.difficulty].name}<br><span class="muted">${c.title}: ${c.doctrine}</span><br>${ratingCard(p.ratings ?? c.ratings, { compact: true })}</div></li>`;
           })}
         </ul>
       </div>
@@ -178,7 +185,7 @@ export function briefingScreen({ config, map, mode, extra }) {
         <h2 class="box-title">${humans.length > 1 ? 'COMMANDERS' : 'YOUR ARSENAL'}</h2>
         ${humans.length > 1
           ? html`<ul class="opp-list">${humans.map((h) => html`<li><span class="insignia" style="--c:${h.color}" aria-hidden="true">■</span><div><b>${h.name}</b></div></li>`)}</ul><p class="hint">Arsenals stay private. Each player sees only their own.</p>`
-          : html`<ul class="arsenal">${WEAPONS.map((w) => html`<li><span class="glyph" style="--c:${w.presentation.color}" aria-hidden="true">${w.glyph}</span> ${w.name} <b>${config.rules?.unlimitedAmmo ? '∞' : ammoText(w, humans[0]?.inventory)}</b></li>`)}</ul>
+          : html`<ul class="arsenal">${WEAPONS.filter((w) => !unlockFor(w.id) || (humans[0]?.inventory?.[w.id] ?? 0) > 0).map((w) => html`<li><span class="glyph" style="--c:${w.presentation.color}" aria-hidden="true">${w.glyph}</span> ${w.name} <b>${config.rules?.unlimitedAmmo ? '∞' : ammoText(w, humans[0]?.inventory)}</b></li>`)}${DEFENSES.filter((d) => (humans[0]?.inventory?.[d.id] ?? 0) > 0).map((d) => html`<li><span class="glyph" style="--c:${d.presentation.color}" aria-hidden="true">${d.glyph}</span> ${d.name} <b>×${humans[0].inventory[d.id]}</b></li>`)}</ul>
              ${humans[0]?.ratings ? html`<h3 class="box-subtitle">YOUR TANK</h3>${ratingCard(humans[0].ratings)}` : ''}`}
       </div>
     </div>
@@ -189,7 +196,17 @@ export function briefingScreen({ config, map, mode, extra }) {
   </section>`;
 }
 
-export function debriefScreen({ state, stats, me, outcome, mode, score, rewards, actions, title, extra, replaySaved }) {
+/** Celebration box for weapons that just unlocked. */
+function unlockBanner(ids) {
+  if (!ids?.length) return '';
+  return html`<div class="box unlock-banner" role="status">
+    <h2 class="box-title">🔓 NEW WEAPON${ids.length > 1 ? 'S' : ''} UNLOCKED</h2>
+    <ul class="arsenal">${ids.map((id) => { const w = getWeapon(id); return html`<li><span class="glyph" style="--c:${w.presentation.color}" aria-hidden="true">${w.glyph}</span> <b>${w.name}</b> — ${w.role}. <span class="muted">${unlockFor(id).text}.</span></li>`; })}</ul>
+    <p class="hint">Quick battles, hot-seat, and play-tests now issue starting rounds. Tournament armories sell it.</p>
+  </div>`;
+}
+
+export function debriefScreen({ state, stats, me, outcome, mode, score, rewards, actions, title, extra, replaySaved, unlocked = [] }) {
   const heading = outcome === 'victory' ? 'VICTORY' : outcome === 'draw' ? 'STALEMATE' : outcome === 'spectate' ? 'BATTLE COMPLETE' : 'DEFEAT';
   return html`
   <section class="debrief" aria-labelledby="debrief-h">
@@ -197,6 +214,7 @@ export function debriefScreen({ state, stats, me, outcome, mode, score, rewards,
     <h1 id="debrief-h" class="screen-title outcome-${outcome}">${heading}</h1>
     <p class="lede">${reasonText(state.result?.reason)} ${state.turn} turns.</p>
     ${extra ? html`<p class="notice">${extra}</p>` : ''}
+    ${unlockBanner(unlocked)}
     <div class="debrief-grid">
       <div class="box wide">
         <h2 class="box-title">AFTER-ACTION REPORT</h2>
@@ -214,14 +232,17 @@ export function debriefScreen({ state, stats, me, outcome, mode, score, rewards,
   </section>`;
 }
 
-export function armoryScreen({ who, credits, inventory, heading, message, nextLabel, history }) {
+export function armoryScreen({ who, credits, inventory, heading, message, nextLabel, history, locks = {} }) {
   return html`
   <section class="armory" aria-labelledby="armory-h">
     <p class="eyebrow">${heading}</p>
     <h1 id="armory-h" class="screen-title">ARMORY — ${who}</h1>
     <p class="credits" aria-live="polite">Credits: <b>${credits}</b>${message ? html` · <span class="msg">${message}</span>` : ''}</p>
+    <h2 class="box-title armory-section">PAYLOADS</h2>
     <div class="armory-grid">
       ${WEAPONS.filter((w) => !w.ammo.unlimited).map((w) => {
+        const lock = locks[w.id];
+        if (lock) return lockedCard(w, lock);
         const err = canBuy(credits, inventory, w.id);
         const owned = inventory[w.id] ?? 0;
         return html`<article class="box weapon-card" aria-labelledby="w-${w.id}">
@@ -229,12 +250,32 @@ export function armoryScreen({ who, credits, inventory, heading, message, nextLa
           <p class="role">${w.role}</p>
           <p>${w.description}</p>
           <p class="muted"><b>Counterplay:</b> ${w.counterplay}</p>
-          <dl class="stat-list compact"><dt>Damage</dt><dd>${w.damage.max}${w.projectile.kind === 'cluster' ? ` × ${w.projectile.count}` : ''}</dd><dt>Blast radius</dt><dd>${w.damage.radius} m</dd><dt>Owned</dt><dd>${owned} / ${w.ammo.cap}</dd><dt>Price</dt><dd>${w.ammo.price}</dd></dl>
+          <dl class="stat-list compact"><dt>Damage</dt><dd>${w.damage.max ? `${w.damage.max}${w.projectile.kind === 'cluster' ? ` × ${w.projectile.count}` : ''}` : 'None'}</dd><dt>Blast radius</dt><dd>${w.damage.max ? `${w.damage.radius} m` : '—'}</dd><dt>Owned</dt><dd>${owned} / ${w.ammo.cap}</dd><dt>Price</dt><dd>${w.ammo.price}</dd></dl>
           <div class="row">
             ${btn('buy', `Buy (${w.ammo.price})`, { arg: w.id, disabled: !!err, desc: `why-${w.id}` })}
             ${btn('sell', `Sell (+${sellPrice(w.id)})`, { arg: w.id, disabled: owned <= 0 })}
           </div>
           <small id="why-${w.id}" class="note">${err ?? 'Available.'}</small>
+        </article>`;
+      })}
+    </div>
+    <h2 class="box-title armory-section">DEFENSES</h2>
+    <p class="hint">Active defenses are chosen during your turn and deploy when it ends (one per turn). Automatic ones trigger by themselves.</p>
+    <div class="armory-grid">
+      ${DEFENSES.map((d) => {
+        const err = canBuy(credits, inventory, d.id);
+        const owned = inventory[d.id] ?? 0;
+        return html`<article class="box weapon-card" aria-labelledby="w-${d.id}">
+          <h2 id="w-${d.id}" class="box-title"><span class="glyph" style="--c:${d.presentation.color}" aria-hidden="true">${d.glyph}</span> ${d.name}</h2>
+          <p class="role">${d.role} · ${d.mode === 'active' ? 'Active' : 'Automatic'}</p>
+          <p>${d.description}</p>
+          <p class="muted"><b>Counterplay:</b> ${d.counterplay}</p>
+          <dl class="stat-list compact"><dt>Owned</dt><dd>${owned} / ${d.stock.cap}</dd><dt>Price</dt><dd>${d.stock.price}</dd></dl>
+          <div class="row">
+            ${btn('buy', `Buy (${d.stock.price})`, { arg: d.id, disabled: !!err, desc: `why-${d.id}` })}
+            ${btn('sell', `Sell (+${sellPrice(d.id)})`, { arg: d.id, disabled: owned <= 0 })}
+          </div>
+          <small id="why-${d.id}" class="note">${err ?? 'Available.'}</small>
         </article>`;
       })}
     </div>
@@ -246,11 +287,50 @@ export function armoryScreen({ who, credits, inventory, heading, message, nextLa
   </section>`;
 }
 
-export function tournamentEndScreen(run, best) {
+function progressBar(have, goal) {
+  const n = Math.round((have / goal) * 10);
+  return html`<span class="rbar" aria-hidden="true">${'█'.repeat(n)}${'░'.repeat(10 - n)}</span> ${have.toLocaleString()} / ${goal.toLocaleString()}`;
+}
+
+function lockedCard(w, lock) {
+  return html`<article class="box weapon-card locked" aria-labelledby="w-${w.id}">
+    <h2 id="w-${w.id}" class="box-title"><span class="glyph" aria-hidden="true">🔒</span> ${w.name}</h2>
+    <p class="role">${w.role}</p>
+    <p>${w.description}</p>
+    <p><b>Unlock:</b> ${lock.text}.</p>
+    <p class="muted" aria-label="Progress ${lock.have} of ${lock.goal}">${progressBar(lock.have, lock.goal)}</p>
+  </article>`;
+}
+
+/** Every weapon, with how each locked one is earned and progress toward it. */
+export function arsenalScreen(records, opts) {
+  const done = UNLOCKS.filter((u) => unlockStatus(records, u.weapon, opts).done).length;
+  return html`
+  <section aria-labelledby="ar-h">
+    <h1 id="ar-h" class="screen-title">ARSENAL</h1>
+    <p class="lede">${done} of ${UNLOCKS.length} special weapons unlocked. Each is a tribute to a classic from the original Scorched Earth. Battles in sandbox mode and the map editor do not count toward unlocks.</p>
+    <div class="armory-grid">${WEAPONS.map((w) => {
+      const st = unlockStatus(records, w.id, opts);
+      const special = !!unlockFor(w.id);
+      return html`<article class="box weapon-card ${st.done ? '' : 'locked'}" aria-labelledby="a-${w.id}">
+        <h2 id="a-${w.id}" class="box-title"><span class="glyph" style="--c:${w.presentation.color}" aria-hidden="true">${st.done ? w.glyph : '🔒'}</span> ${w.name}${special ? '' : html` <span class="tag">STANDARD</span>`}</h2>
+        <p class="role">${w.role}</p>
+        <p>${w.description}</p>
+        <p class="muted"><b>Counterplay:</b> ${w.counterplay}</p>
+        <dl class="stat-list compact"><dt>Damage</dt><dd>${w.damage.max ? `${w.damage.max}${w.projectile.count ? ` × ${w.projectile.count}` : ''}` : 'None'}</dd><dt>Price</dt><dd>${w.ammo.unlimited ? 'Free' : w.ammo.price}</dd></dl>
+        ${special ? html`<p><b>${st.done ? '✓ Unlocked' : 'Unlock'}:</b> ${st.text}.</p>${st.done ? '' : html`<p class="muted" aria-label="Progress ${st.have} of ${st.goal}">${progressBar(st.have, st.goal)}</p>`}` : ''}
+      </article>`;
+    })}</div>
+    <div class="actions">${btn('back', 'Back', { key: 'Esc' })}</div>
+  </section>`;
+}
+
+export function tournamentEndScreen(run, best, unlocked = []) {
   return html`
   <section class="debrief" aria-labelledby="end-h">
     <p class="eyebrow">TOURNAMENT COMPLETE</p>
     <h1 id="end-h" class="screen-title">FINAL SCORE ${run.score}</h1>
+    ${unlockBanner(unlocked)}
     <p class="lede">Rank: <b>${rankFor(run.score)}</b>. Retries used: ${run.retries} (−${RETRY_PENALTY} each).${best ? ` Personal best: ${best.score}.` : ''}</p>
     <div class="box wide"><div class="table-wrap"><table class="stats-table">
       <thead><tr><th scope="col">Round</th><th scope="col">Result</th><th scope="col">Damage</th><th scope="col">Kills</th><th scope="col">Accuracy</th><th scope="col">Score</th><th scope="col">Credits</th></tr></thead>
@@ -304,6 +384,7 @@ export function rosterScreen() {
     <p class="lede">Each AI commander is a playful, fictionalised gameplay interpretation of a public-domain historical figure. They are not claims about the real person's tactics, beliefs, or character, and their in-game lines are original, not quotations.</p>
     <div class="card-grid">${COMMANDERS.map((c) => html`<article class="box card" aria-labelledby="d-${c.id}">
       <h2 id="d-${c.id}" class="box-title"><span class="insignia" style="--c:${c.color}" aria-hidden="true">${c.insignia}</span> ${c.name}</h2>
+      <img class="tank-portrait" src="${tankPortrait(c.id, c.color)}" width="136" height="112" alt="${c.name}'s tank. ${SPRITE_NOTES[c.id]}">
       <p class="role">${c.title}</p>
       <p class="muted">${c.bio}</p>
       <p>${c.doctrine}</p>
@@ -327,6 +408,7 @@ export function helpContent() {
       <tr><th scope="row"><kbd>←</kbd> <kbd>→</kbd></th><td>Angle ±1° (hold <kbd>Shift</kbd> for ±5°)</td></tr>
       <tr><th scope="row"><kbd>↑</kbd> <kbd>↓</kbd></th><td>Power ±1 (hold <kbd>Shift</kbd> for ±5)</td></tr>
       <tr><th scope="row"><kbd>1</kbd>–<kbd>6</kbd>, <kbd>[</kbd> <kbd>]</kbd></th><td>Choose payload</td></tr>
+      <tr><th scope="row"><kbd>D</kbd></th><td>Cycle the defense to deploy when this turn ends (or click one; click again to clear)</td></tr>
       <tr><th scope="row"><kbd>Space</kbd> / <kbd>Enter</kbd> / <kbd>F</kbd></th><td>Fire</td></tr>
       <tr><th scope="row"><kbd>P</kbd> / <kbd>Esc</kbd></th><td>Pause and resume (pause also freezes AI turns)</td></tr>
       <tr><th scope="row"><kbd>H</kbd> / <kbd>?</kbd></th><td>This manual</td></tr>
@@ -337,7 +419,12 @@ export function helpContent() {
     <p>Wind pushes every projectile sideways at a steady rate for the whole flight. Its strength is shown as a number, a direction word, and a row of arrows. It shifts a little after every turn, more in a gale. The trajectory preview already accounts for the current wind. Choose Full, Partial, or Off preview in Settings; night limits it to Partial.</p>
     <h3>Payloads</h3>
     <div class="table-wrap"><table class="stats-table"><thead><tr><th scope="col">Payload</th><th scope="col">Damage</th><th scope="col">Radius</th><th scope="col">Role</th><th scope="col">Counterplay</th></tr></thead><tbody>
-      ${WEAPONS.map((w) => html`<tr><th scope="row">${w.glyph} ${w.name}</th><td>${w.damage.max}${w.projectile.kind === 'cluster' ? ` ×${w.projectile.count}` : ''}</td><td>${w.damage.radius}</td><td>${w.description}</td><td>${w.counterplay}</td></tr>`)}
+      ${WEAPONS.map((w) => html`<tr><th scope="row">${w.glyph} ${w.name}</th><td>${w.damage.max}${w.projectile.kind === 'cluster' ? ` ×${w.projectile.count}` : ''}</td><td>${w.damage.radius}</td><td>${w.description}${unlockFor(w.id) ? html` <i>Unlock: ${unlockFor(w.id).text}.</i>` : ''}</td><td>${w.counterplay}</td></tr>`)}
+    </tbody></table></div>
+    <h3>Defenses</h3>
+    <p>Buy defenses in the armory. <b>Active</b> defenses are chosen during your turn (one per turn) and deploy when the turn ends, after your shot lands. <b>Automatic</b> defenses trigger by themselves and use up one charge each time. Defenses always use up stock, even with unlimited ammunition.</p>
+    <div class="table-wrap"><table class="stats-table"><thead><tr><th scope="col">Defense</th><th scope="col">Type</th><th scope="col">Effect</th><th scope="col">Counterplay</th></tr></thead><tbody>
+      ${DEFENSES.map((d) => html`<tr><th scope="row">${d.glyph} ${d.name}</th><td>${d.mode === 'active' ? 'Active' : 'Automatic'}</td><td>${d.description}</td><td>${d.counterplay}</td></tr>`)}
     </tbody></table></div>
     <h3>Stat ratings</h3>
     <p>Every tank has a ${RATING_BUDGET}-point stat card rated 2–10. Commanders have fixed cards (see Commander Dossiers); you choose a chassis in Settings or in the hot-seat setup.</p>

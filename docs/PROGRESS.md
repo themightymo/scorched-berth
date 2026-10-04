@@ -27,10 +27,15 @@ Last updated: 2026-10-03 (build complete except online features).
 - [x] **M6** Hot-seat (hand-off screen, private aim/arsenal, series with private armory), 6 data-defined challenges, local daily seed, replay viewer with verification + share codes, weather (clear/gale/rain) + night, themes (3, contrast-validated) + name/colour, sandbox rules, map editor (save/share/play-test).
 - [x] Tests: engine, rules/mapgen, AI, game layer (49 passing at last run).
 
+- [x] **Defenses** (owner request): validated registry of 10 defensive items (7 active, sent with the fire command and deployed at end of turn; 3 automatic). Engine mechanics, armory, HUD panel (D key), field rendering, log, audio, AI usage and tournament stock, sandbox stock, manual, tests.
 - [x] **Stat ratings** (owner request): 30-point cards (Firepower, Armour, Muzzle velocity, Hull, Stability) for all six commanders and five player chassis; engine mechanics, AI, UI (dossiers, briefing, setup, settings, manual), tests.
 - [x] Browser smoke suite passes 15/15 (`npm run smoke`; auto-uses a Playwright headless shell if installed).
 - [x] README, `feature-backlog.md` status, `docs/online-design.md`.
 - [x] Final `npm run verify`: 51 tests, 100/100 AI battles (0 exceptions, 0 overruns, p95 ≈ 20 ms), build OK.
+- [x] **Unlockable weapons** (owner request, 2026-10-03): ten Scorched Earth tributes (Leapfrog, Funky Bomb, Death's Head, Heavy Roller, Ton of Dirt, Riot Bomb, Hot Napalm, Laser, Plasma Blast, Heavy Sandhog). New engine projectile kinds (leapfrog, funky, roller, beam, plasma), forking burrows, `mound`/`none` crater shapes; unlock rules derived from the service record (`src/game/unlocks.js`); Arsenal screen, armory lock cards, debrief unlock banner, kits for quick/hot-seat/play-test; AI line-of-sight and blast-size candidates for laser and plasma; 20 new tests. A 40-battle AI stress run with every new weapon: 0 errors, 0 replay desyncs.
+- [x] **Single-file build** (owner request): `npm run build:single` → `standalone/scorched-berth.html` (≈216 KB, runs from file://). Versioned pre-commit hook in `.githooks/` rebuilds it on every commit that touches the app.
+- [x] **Commander tank sprites** (owner request): each commander's tank reflects who they are (Lincoln's stovepipe hat, Napoleon's bicorne, Elizabeth's crown, Caesar's laurels and eagle, Genghis's helmet and horsetail standard, Attila's wolf helm and ram), with keepsakes on wrecks and portraits in the dossiers and briefing.
+- [x] `npm run verify`: 85 tests, 100/100 AI battles, both builds OK; `npm run smoke` 15/15.
 
 ## Waiting on the owner
 - [x] Online multiplayer and online daily leaderboard: **on hold by owner decision (2026-10-03)**. Design kept in `docs/online-design.md`; do not build until asked.

@@ -9,8 +9,10 @@
     "preview": "vite preview --host 0.0.0.0",
     "test": "node --test \"tests/**/*.test.js\"",
     "simulate": "node scripts/simulate.mjs 100",
-    "verify": "npm test && npm run simulate && npm run build",
-    "smoke": "node scripts/browser-smoke.mjs"
+    "verify": "npm test && npm run simulate && npm run build && npm run build:single",
+    "smoke": "node scripts/browser-smoke.mjs",
+    "build:single": "node scripts/build-single.mjs",
+    "prepare": "git config core.hooksPath .githooks || true"
   },
   "devDependencies": {
     "vite": "^6.1.0"

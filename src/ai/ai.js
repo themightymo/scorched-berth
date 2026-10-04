@@ -4,11 +4,12 @@
 // simulations stop before the turn ends, and aim noise uses its own stream.
 
 import { trace } from '../core/physics.js';
-import { simulateShot, legalCommand } from '../core/engine.js';
+import { simulateShot, legalCommand, defenseBlocked } from '../core/engine.js';
+import { getDefense } from '../core/defenses.js';
 import { WEAPONS, getWeapon, hasAmmo, damageAt } from '../core/weapons.js';
 import { createRng } from '../core/rng.js';
 import { clamp } from '../core/math.js';
-import { W, ANGLE_MIN, ANGLE_MAX, POWER_MIN, POWER_MAX } from '../core/constants.js';
+import { W, BEDROCK, BARREL_HEIGHT, ANGLE_MIN, ANGLE_MAX, POWER_MIN, POWER_MAX } from '../core/constants.js';
 import { NIGHT } from '../core/weather.js';
 import { getCommander, DIFFICULTY } from './commanders.js';
 
@@ -106,6 +107,51 @@ function fallbackCommand(state, actorIdx, weights) {
   return { type: 'fire', actor: actorIdx, weapon: 'shell', angle: right ? 45 : 135, power: 65, target: target ?? undefined };
 }
 
+/** Aim points for weapons that ignore the ballistic arc. */
+function specialCandidates(state, actorIdx, weapons, weights) {
+  const me = state.tanks[actorIdx];
+  const out = [];
+  for (const id of weapons) {
+    const pr = getWeapon(id).projectile;
+    if (pr.kind === 'plasma') {
+      out.push({ weapon: id, a: me.angle, p: POWER_MAX }, { weapon: id, a: me.angle, p: 40 });
+    } else if (pr.kind === 'beam') {
+      for (const i of weights.keys()) {
+        const t = state.tanks[i];
+        const dx = t.x - me.x, dy = (me.y - BARREL_HEIGHT) - (t.y - 8);
+        const a = clamp(Math.round((Math.atan2(dy, dx) * 180) / Math.PI), ANGLE_MIN, ANGLE_MAX);
+        const p = clamp(Math.ceil(Math.sqrt(dx * dx + dy * dy) / pr.rangePerPower) + 4, POWER_MIN, POWER_MAX);
+        out.push({ weapon: id, a, p });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Pick an active defense to deploy with this shot, or null. Simple, readable
+ * priorities: put out fires, patch heavy damage, run when nearly dead, then
+ * keep a shield or deflector up. Cautious doctrines (low risk) dig in sooner.
+ */
+export function chooseDefense(state, actorIdx, profile) {
+  const t = state.tanks[actorIdx];
+  const can = (id) => !defenseBlocked(t, id);
+  const frac = t.hp / t.maxHp;
+  const enemies = state.tanks.filter((o, i) => i !== actorIdx && o.alive);
+  if (!enemies.length) return null;
+  const burning = state.fires.some((f) => t.x >= f.x0 && t.x <= f.x1) || state.vents.some((v) => t.x >= v.x0 - 6 && t.x <= v.x1 + 6);
+  if (burning && !(t.fx?.fireproof > 0) && can('foam')) return 'foam';
+  if (t.maxHp - t.hp >= getDefense('repair').params.heal * 0.85 && can('repair')) return 'repair';
+  const nearest = Math.min(...enemies.map((o) => Math.abs(o.x - t.x)));
+  if (frac < 0.35 && nearest < 260 && can('relocate')) return 'relocate';
+  const caution = 1 - profile.risk;
+  if (frac < 0.6 + caution * 0.4 && !(t.fx?.shield > 0) && can('shield')) return 'shield';
+  if (frac < 0.5 + caution * 0.4 && can('deflector')) return 'deflector';
+  if (BEDROCK - t.y > 150 && frac < 0.8 && can('anchor')) return 'anchor';
+  if (state.turn <= state.tanks.length * 2 && caution > 0.4 && can('berm')) return 'berm';
+  return null;
+}
+
 /**
  * Choose a legal command for the tank whose turn it is.
  * Returns { command, diagnostics }. Always returns a legal command.
@@ -182,6 +228,15 @@ export function decideShot(state, actorIdx = state.actor, options = {}) {
     }
     if (diag.timedOut) break;
   }
+  // Laser and plasma do not follow the ballistic arc the grid searched, so
+  // they get candidates of their own: line-of-sight angles and blast sizes.
+  for (const c of specialCandidates(state, actorIdx, weapons, weights)) {
+    if (overBudget()) { diag.timedOut = true; break; }
+    const sim = simulateShot(state, { type: 'fire', actor: actorIdx, weapon: c.weapon, angle: c.a, power: c.p });
+    diag.sims++;
+    if (!sim) continue;
+    scored.push({ ...scoreOutcome(state, sim, actorIdx, c.weapon, weights, ctx), a: c.a, p: c.p, weapon: c.weapon, impact: null, special: true });
+  }
   scored.sort((x, y) => y.score - x.score);
 
   // Robustness: prefer solutions that still work if the aim drifts.
@@ -189,6 +244,7 @@ export function decideShot(state, actorIdx = state.actor, options = {}) {
   if (robustWeight > 0 && scored.length) {
     const top = scored.slice(0, Math.min(6, scored.length));
     for (const s of top) {
+      if (s.special) { s.robust = 1; continue; }
       if (overBudget()) { diag.timedOut = true; break; }
       const w = getWeapon(s.weapon);
       const offsets = [[-1, 0], [1, 0], [0, -1], [0, 1], [-2, -1], [2, 1]].slice(0, diff.robustSamples + 2);
@@ -236,6 +292,8 @@ export function decideShot(state, actorIdx = state.actor, options = {}) {
   command.angle = clamp(Math.round(command.angle + rng.gauss() * sigma * 0.5), ANGLE_MIN, ANGLE_MAX);
   command.power = clamp(Math.round(command.power + rng.gauss() * sigma * 0.6), POWER_MIN, POWER_MAX);
   if (command.target == null) delete command.target;
+  const use = chooseDefense(state, actorIdx, profile);
+  if (use) command.use = use;
 
   if (legalCommand(state, command)) {
     command = fallbackCommand(state, actorIdx, weights);
@@ -249,6 +307,7 @@ export function decideShot(state, actorIdx = state.actor, options = {}) {
   diag.score = Math.round(best.score * 10) / 10;
   diag.target = command.target ?? null;
   diag.weapon = command.weapon;
+  diag.use = command.use ?? null;
   diag.intended = intended;
   diag.sigma = Math.round(sigma * 100) / 100;
   diag.predicted = best.impact ? { x: Math.round(best.impact.x), y: Math.round(best.impact.y) } : null;

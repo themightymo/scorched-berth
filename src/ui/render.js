@@ -8,6 +8,7 @@ import { W, H, BEDROCK } from '../core/constants.js';
 import { createRng } from '../core/rng.js';
 import { getWeapon } from '../core/weapons.js';
 import { getCommander } from '../ai/commanders.js';
+import { drawTankSprite, drawWreck, spriteTop } from './sprites.js';
 
 const LW = W / 2, LH = H / 2;
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
@@ -132,33 +133,85 @@ export function createRenderer(canvas) {
     }
   }
 
+  const surface = {
+    rect(x, y, w, h, color) { b.fillStyle = color; b.fillRect(x, y, w, h); },
+    line: (x0, y0, x1, y1, color) => pixelLine(x0, y0, x1, y1, color),
+  };
+
   function drawTank(t, angle, isActive, theme, time, reduced) {
     const lx = Math.round(t.x / 2), ly = Math.round(t.y / 2);
     if (!t.alive) {
-      b.fillStyle = '#1b1b1b';
-      b.fillRect(lx - 8, ly - 3, 16, 3);
-      b.fillStyle = '#3a3a3a';
-      b.fillRect(lx - 5, ly - 5, 7, 2);
+      drawWreck(surface, { lx, ly, commander: t.commander });
       if (!reduced && Math.floor(time * 3 + t.x) % 3 === 0) { b.fillStyle = '#555'; b.fillRect(lx - 1, ly - 9 - Math.floor((time * 6) % 4), 2, 2); }
       return;
     }
-    const col = t.color;
-    const dark = css(mix(rgb(col), [0, 0, 0], 0.55));
-    b.fillStyle = '#000000';
-    b.fillRect(lx - 10, ly - 8, 20, 9); // outline for contrast on any sky
-    b.fillStyle = dark;
-    b.fillRect(lx - 9, ly - 2, 18, 2); // treads
-    b.fillStyle = col;
-    b.fillRect(lx - 8, ly - 5, 16, 3); // hull
-    b.fillRect(lx - 4, ly - 7, 8, 2); // turret
-    b.fillStyle = dark;
-    for (let k = -6; k <= 6; k += 4) b.fillRect(lx + k, ly - 1, 1, 1);
-    const rad = (angle * Math.PI) / 180;
-    pixelLine(lx, ly - 7, lx + Math.cos(rad) * 12, ly - 7 - Math.sin(rad) * 12, col);
+    drawTankSprite(surface, { lx, ly, color: t.color, angle, commander: t.commander });
     if (isActive && (reduced || Math.floor(time * 2) % 2 === 0)) {
       b.fillStyle = theme.ui.focus;
       b.fillRect(lx - 11, ly + 1, 22, 1);
     }
+    drawProtection(t, lx, ly, time, reduced);
+  }
+
+  /** Dotted circle in buffer pixels. */
+  function dotRing(cx, cy, r, color, dots, phase) {
+    b.fillStyle = color;
+    for (let k = 0; k < dots; k++) {
+      const a = phase + (k / dots) * Math.PI * 2;
+      b.fillRect(Math.round(cx + Math.cos(a) * r), Math.round(cy + Math.sin(a) * r), 1, 1);
+    }
+  }
+
+  // Active defenses are drawn on the tank so their state is visible on the field.
+  function drawProtection(t, lx, ly, time, reduced) {
+    const fx = t.fx ?? {};
+    const spin = reduced ? 0 : time;
+    if (fx.shield > 0) dotRing(lx, ly - 5, 13, css(rgb('#7fd6ff'), 0.35 + 0.6 * Math.min(1, fx.shield / 60)), 28, spin * 0.6);
+    if (fx.deflector) {
+      dotRing(lx, ly - 5, 16, '#c9a2ff', 12, -spin * 1.5);
+      dotRing(lx, ly - 5, 16, css(rgb('#c9a2ff'), 0.4), 12, -spin * 1.5 + 0.13);
+    }
+    if (fx.anchor > 0) {
+      b.fillStyle = '#a8b4c4';
+      for (const k of [-7, 0, 7]) b.fillRect(lx + k, ly + 1, 1, 3);
+    }
+    if (fx.fireproof > 0 && (reduced || Math.floor(time * 3) % 2 === 0)) {
+      b.fillStyle = '#bff4ff';
+      b.fillRect(lx - 9, ly - 10, 1, 1); b.fillRect(lx + 9, ly - 9, 1, 1); b.fillRect(lx, ly - 12, 1, 1);
+    }
+    if (t.falling?.chute) {
+      b.fillStyle = '#f6e7b8';
+      b.fillRect(lx - 6, ly - 22, 13, 1);
+      b.fillRect(lx - 8, ly - 21, 2, 1); b.fillRect(lx + 7, ly - 21, 2, 1);
+      pixelLine(lx - 8, ly - 20, lx - 3, ly - 8, 'rgba(246,231,184,0.6)');
+      pixelLine(lx + 8, ly - 20, lx + 3, ly - 8, 'rgba(246,231,184,0.6)');
+    }
+  }
+
+  function drawProjectile(p, time, reduced) {
+    const w = getWeapon(p.weapon);
+    const x = Math.round(p.x / 2), y = Math.round(p.y / 2);
+    const color = p.hue != null && w.presentation.palette ? w.presentation.palette[p.hue % w.presentation.palette.length] : w.presentation.color;
+    if (p.kind === 'plasma') {
+      // Charge-up: rings closing in on the firer before the discharge.
+      const k = Math.min(1, p.age / Math.max(1, p.charge));
+      const r = (w.damage.radius * (p.radiusScale ?? 1) * (1 - k)) / 2;
+      dotRing(x, y, Math.max(2, r), color, 32, reduced ? 0 : time * 4);
+      dotRing(x, y, Math.max(1, r * 0.5), '#ffffff', 16, reduced ? 0 : -time * 6);
+      return;
+    }
+    if (p.kind === 'beam') {
+      const len = Math.sqrt(p.vx * p.vx + p.vy * p.vy) || 1;
+      pixelLine(x, y, x - (p.vx / len) * 14, y - (p.vy / len) * 14, color);
+      b.fillStyle = '#ffffff'; b.fillRect(x, y, 1, 1);
+      return;
+    }
+    const small = p.kind === 'bomblet' || p.kind === 'funkylet';
+    b.fillStyle = '#000';
+    b.fillRect(x - 1, y - (p.kind === 'rolling' ? 3 : 1), 3, 3);
+    b.fillStyle = color;
+    if (p.kind === 'rolling') { b.fillRect(x, y - 2, 2, 2); return; }
+    b.fillRect(x, y, small ? 1 : 2, small ? 1 : 2);
   }
 
   function drawFires(state, theme, time, reduced) {
@@ -202,13 +255,7 @@ export function createRenderer(canvas) {
       b.fillStyle = css(rgb(p.color), Math.max(0, p.life));
       b.fillRect(Math.round(p.x / 2), Math.round(p.y / 2), 1, 1);
     }
-    for (const p of state.projectiles) {
-      const w = getWeapon(p.weapon);
-      b.fillStyle = '#000';
-      b.fillRect(Math.round(p.x / 2) - 1, Math.round(p.y / 2) - 1, 3, 3);
-      b.fillStyle = w.presentation.color;
-      b.fillRect(Math.round(p.x / 2), Math.round(p.y / 2), p.kind === 'bomblet' ? 1 : 2, p.kind === 'bomblet' ? 1 : 2);
-    }
+    for (const p of state.projectiles) drawProjectile(p, view.time, reduced);
     state.tanks.forEach((t, i) => {
       const angle = view.aim && i === view.aim.actor ? view.aim.angle : t.angle;
       drawTank(t, angle, i === state.actor && state.phase === 'aiming', theme, view.time, reduced);
@@ -254,7 +301,7 @@ export function createRenderer(canvas) {
     ctx.textBaseline = 'bottom';
     state.tanks.forEach((t, i) => {
       const label = view.labels?.[i] ?? t.name;
-      const x = px(t.x), y = py(t.y - 26);
+      const x = px(t.x), y = py(t.y - (t.alive ? Math.max(26, spriteTop(t.commander) * 2 + 8) : 26));
       ctx.lineWidth = Math.max(2, unit * 2);
       ctx.strokeStyle = '#000';
       ctx.fillStyle = t.alive ? theme.field.text : '#9a9a9a';

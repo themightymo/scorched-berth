@@ -183,6 +183,14 @@ html.flicker .crt { animation: flicker 4s steps(2) infinite; }
 .weapon-btn.selected { border-color: var(--focus); background: var(--bg); box-shadow: inset 0 0 0 1px var(--focus); }
 .weapon-btn.selected .wkey::before { content: '▶'; color: var(--focus); margin-right: 2px; }
 .weapon-detail { font-size: 0.8rem; color: var(--muted); margin: 8px 0 0; min-height: 3.6em; }
+.hud-defense { grid-column: 1 / -1; }
+.hud-defense legend { font-size: 1.2rem; }
+.defense-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.defense-list .weapon-btn { flex: 0 1 auto; }
+.defense-list .weapon-btn.passive { opacity: 0.85; border-style: dashed; cursor: default; }
+.defense-list .weapon-btn.passive:disabled { opacity: 0.5; }
+.defense-list .weapon-btn.selected .wkey::before { content: ''; margin: 0; }
+.armory-section { margin: 18px 0 8px; }
 .hud-fire { display: flex; flex-direction: column; gap: 10px; justify-content: space-between; }
 .btn-fire { font: 2rem/1 var(--display); letter-spacing: 3px; text-align: center; background: var(--danger); border-color: var(--danger); color: var(--ink); padding: 12px; }
 .btn-fire:hover:not(:disabled) { background: var(--warn); border-color: var(--warn); }
@@ -228,3 +236,11 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.72); }
 
 /* ── Motion ──────────────────────────────────────────────────────────── */
 html.reduced-motion *, html.reduced-motion *::before, html.reduced-motion *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+
+/* Unlockable weapons and commander tank portraits */
+.weapon-card.locked { border-style: dashed; opacity: 0.82; }
+.weapon-card.locked .box-title { color: var(--muted, #9aa4b2); }
+.unlock-banner { border: 2px solid var(--ok); margin: 12px 0; }
+.unlock-banner .box-title { color: var(--ok); }
+.tank-portrait, .tank-thumb { image-rendering: pixelated; display: block; background: var(--ink); border: 1px solid var(--line, #2a3242); flex: none; }
+.tank-portrait { margin: 4px 0 8px; max-width: 100%; height: auto; }

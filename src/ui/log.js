@@ -2,6 +2,7 @@
 // in words so status never depends on colour or sound.
 
 import { getWeapon } from '../core/weapons.js';
+import { getDefense } from '../core/defenses.js';
 
 const name = (state, i) => (i == null ? 'The field' : state.tanks[i]?.name ?? `Tank ${i + 1}`);
 
@@ -27,9 +28,33 @@ export function describe(e, state) {
     case 'fire': return { text: `${name(state, e.by)} fires ${getWeapon(e.weapon).name} at ${e.angle}°, power ${e.power}.`, tone: 'info' };
     case 'directHit': return { text: `Direct hit on ${name(state, e.to)}!`, tone: 'hit' };
     case 'split': return { text: `Cluster charge splits into ${e.count} bomblets.`, tone: 'info' };
-    case 'burrow': return { text: 'Burrowing charge drills into the ground…', tone: 'info' };
+    case 'burrow': return { text: e.forks > 1 ? `The sandhog forks into ${e.forks} tunnelling warheads…` : 'Burrowing charge drills into the ground…', tone: 'info' };
+    case 'hop': return { text: e.left > 0 ? 'Leapfrog hops onward…' : 'Leapfrog makes its last hop…', tone: 'info' };
+    case 'scatter': return { text: `Funky bomb flings ${e.count} bomblets in every direction!`, tone: 'warn' };
+    case 'roll': return { text: `Heavy roller lands and rolls ${e.dir > 0 ? 'east' : 'west'}…`, tone: 'info' };
+    case 'beamEnd': return { text: 'The laser runs out of range and fades.', tone: 'miss' };
+    case 'buried': return { text: `${name(state, e.to)} is buried in dirt! Fire steeply or blast free.`, tone: 'warn' };
     case 'ignite': return { text: `Napalm ignites ${Math.round(e.x1 - e.x0)} m of ground for ${e.turns} turns.`, tone: 'warn' };
-    case 'extinguish': return { text: 'A blast smothers part of the fire.', tone: 'info' };
+    case 'extinguish': return { text: e.cause === 'foam' ? 'Suppressant foam smothers a fire.' : e.cause === 'dirt' ? 'Falling dirt smothers part of the fire.' : 'A blast smothers part of the fire.', tone: 'info' };
+    case 'defense': {
+      const who = name(state, e.by);
+      switch (e.item) {
+        case 'plating': return { text: `${who} bolts on hull plating: +${e.amount} armour.`, tone: 'info' };
+        case 'shield': return { text: `${who} raises an energy shield.`, tone: 'info' };
+        case 'deflector': return { text: `${who} powers up a deflector field.`, tone: 'info' };
+        case 'repair': return { text: `${who} patches the hull: +${e.amount} armour.`, tone: 'info' };
+        case 'foam': return { text: `${who} sprays fire suppressant and is fireproof for two rounds.`, tone: 'info' };
+        case 'berm': return { text: `${who} throws up earthworks.`, tone: 'info' };
+        case 'anchor': return { text: `${who} drives a bedrock anchor into the ground.`, tone: 'info' };
+        case 'relocate': return { text: `${who} warps ${Math.round(Math.abs(e.x - e.from))} m to a new position.`, tone: 'info' };
+        default: return { text: `${who} deploys ${getDefense(e.item)?.name ?? 'a defense'}.`, tone: 'info' };
+      }
+    }
+    case 'defenseFailed': return { text: `${name(state, e.by)}’s ${getDefense(e.item)?.name ?? 'defense'} finds no safe spot and stays put.`, tone: 'warn' };
+    case 'shieldHit': return { text: e.left > 0 ? `${name(state, e.to)}’s shield absorbs ${e.absorbed} (${e.left} left).` : `${name(state, e.to)}’s shield absorbs ${e.absorbed} and collapses.`, tone: 'info' };
+    case 'deflect': return { text: `${name(state, e.to)}’s deflector bounces ${name(state, e.by)}’s shot away!`, tone: 'warn' };
+    case 'intercept': return { text: `${name(state, e.to)}’s point-defense gun shoots down ${name(state, e.by)}’s ${getWeapon(e.weapon)?.name ?? 'shot'}.`, tone: 'warn' };
+    case 'parachute': return { text: `${name(state, e.to)} opens a parachute.`, tone: 'info' };
     case 'fireOut': return { text: 'A fire burns out.', tone: 'info' };
     case 'offscreen': return { text: `${name(state, e.by)}’s shot leaves the battlefield.`, tone: 'miss' };
     case 'fizzle': return { text: 'The shot fizzles out.', tone: 'miss' };

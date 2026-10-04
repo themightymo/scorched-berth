@@ -9,18 +9,25 @@ npm install
 npm run dev        # local development server
 npm run build      # production build in dist/
 npm run preview    # serve the production build
+npm run build:single  # the whole game in one file: standalone/scorched-berth.html
 ```
+
+### Single-file version
+
+`standalone/scorched-berth.html` is the complete game in one self-contained HTML file: the bundled script and stylesheet are inlined. Double-click it to play from disk, email it, or drop it on any static host. Only the two fonts load from Google Fonts, and the game falls back to system monospace fonts when offline.
+
+It is rebuilt automatically. `npm install` points git at the versioned hooks in `.githooks/`, and the pre-commit hook rebuilds the file and adds it to any commit that touches the app (`src/`, `index.html`, `style.css`, `main.js`, `package.json`). Every push therefore carries a current copy. To skip it once, run `SKIP_SINGLE_BUILD=1 git commit …`. If you cloned without running `npm install`, enable the hook with `git config core.hooksPath .githooks`.
 
 ## Verify
 
 ```sh
 npm test           # all unit and behaviour tests (node:test, no browser)
 npm run simulate   # 100 seeded AI-only battles: timing, failures, commander behaviour
-npm run verify     # tests + simulation + production build (use before shipping)
+npm run verify     # tests + simulation + production build + single-file build (use before shipping)
 npm run smoke      # optional: end-to-end checks in headless Chrome (run `npm run build` first; set CHROME_PATH if Chrome is not in the default macOS location)
 ```
 
-Add `?dev=1` to the URL to show the AI diagnostics overlay (target, score, predicted impact, decision time) and expose `window.__sb` for debugging. Normal play never shows diagnostics.
+Add `?dev=1` to the URL to show the AI diagnostics overlay (target, score, predicted impact, decision time), unlock every weapon for that session, and expose `window.__sb` for debugging. `?unlockall` unlocks the weapons without the overlay. Neither changes your saved record. Normal play never shows diagnostics.
 
 ## Modes
 
@@ -39,7 +46,8 @@ Add `?dev=1` to the URL to show the AI diagnostics overlay (target, score, predi
 | --- | --- |
 | ← / → | Angle ±1° (Shift: ±5°). Left raises the barrel toward the left. |
 | ↑ / ↓ | Power ±1 (Shift: ±5) |
-| 1–6, [ / ] | Choose payload |
+| 1–9, 0, [ / ] | Choose payload (0 is the tenth; [ ] cycles through the rest) |
+| D | Cycle the defense to deploy when this turn ends |
 | Space, Enter, F | Fire |
 | P, Esc | Pause / resume (freezes shots in flight and AI turns) |
 | H, ? | Field manual |
@@ -54,6 +62,23 @@ Every control also works with the mouse. Page scrolling is blocked only while ga
 - **Wind** pushes every projectile sideways at a steady rate. It shifts a little after every turn, more in a gale. The trajectory preview (Full, Partial, or Off in Settings) includes the current wind.
 - **Damage** falls off linearly to zero at the blast radius. A direct hit deals full damage. Craters reshape the ground. Tanks fall when the ground beneath them is removed, and a fall of more than 20 m causes damage, applied once per fall.
 - **Payloads**: Standard Shell (unlimited), Heavy Shell, Mini Nuke, Cluster Charge (splits into five at the top of its arc), Napalm Canister (fire burns tanks at the end of each turn; blasts put it out; rain weakens it), and Burrowing Charge (drills before detonating; its shaft drops tanks above it). The field manual and armory list each payload's role and counterplay.
+- **Unlockable weapons**: ten more payloads, each a tribute to a classic from the original Scorched Earth, are earned from your service record. The **Arsenal** screen on the title menu shows each goal and your progress, and the debrief announces new unlocks. Once a weapon is unlocked, quick battles, hot-seat series, and map play-tests issue starting rounds, the tournament armory sells it, and sandbox lets you stock it. Daily and challenge battles keep their fixed arsenals. Sandbox and play-test battles do not count toward unlocks.
+
+  | Weapon | Unlock | What it does |
+  | --- | --- | --- |
+  | ≈ Leapfrog | Win 3 battles | Explodes, then hops onward twice; each hop is weaker. |
+  | ◌ Riot Bomb | Fire 75 shots | Enormous crater, no blast damage: drop a tank into the pit or dig yourself out. |
+  | ▲ Ton of Dirt | Fight 10 battles | Drops a ball of earth. A tank caught in it sits in a pit and must fire steeply or blast free. |
+  | ♨ Hot Napalm | Deal 250 burn damage with fire | Wider, hotter, longer-lasting napalm. |
+  | ⌁ Laser | Land 10 direct hits | Straight beam with no gravity or wind; power sets its range; hills block it. |
+  | ◉ Heavy Roller | Earn 6 challenge stars | Lands, rolls downhill, and explodes at a tank or the valley floor. |
+  | ⋔ Heavy Sandhog | Destroy 12 enemy tanks | Burrows and forks into three tunnelling warheads. |
+  | ✺ Funky Bomb | Win a Daily Challenge | Bursts and flings six multicoloured bomblets in a wild spray. |
+  | ✹ Plasma Blast | Complete a tournament | Discharges around your own tank without hurting you. Power sets its size, and a tighter blast hits harder. |
+  | ☠ Death's Head | Score 3,200 in one tournament (Major rank) | Nine heavy warheads split at the top of the arc. |
+
+  Unlocks are derived from the service record rather than stored separately, so they can never get out of sync with it. The rules live in `src/game/unlocks.js`.
+- **Defenses**: ten items sold in the armory beside the payloads. **Active** defenses are chosen during your turn (one per turn, click again or cycle with D to clear) and deploy when the turn ends, after your own shot lands: Energy Shield (absorbs the next 60 blast damage), Deflector Field (bounces the first hostile projectile away and the bounced round counts as yours), Field Repair Kit (+35 armour), Fire Suppressant (puts out fires within 100 m and gives fire and vent immunity for two rounds), Earthworks (dirt berms on both sides), Bedrock Anchor (craters cannot dig out the ground beneath you for two rounds), and Emergency Relocator (warps you to a random spot clear of other tanks). **Automatic** defenses trigger by themselves: Point-Defense Gun (shoots down the first hostile projectile within 80 m, one charge each), Parachute (prevents one fall's damage), and Hull Plating (+25 armour at the start of the next battle). Defenses always use up stock, even with unlimited ammunition. AI commanders carry defenses in later tournament rounds and use them by doctrine.
 - **Weather**: Clear, Gale (strong, shifting wind), or Rain (weaker napalm). **Night** limits the preview to Partial and widens every AI's aim.
 - **Thermal vents** (Thermal Vents terrain) burn tanks that end a turn on them. Tanks never spawn near one.
 
@@ -73,7 +98,7 @@ Each commander has a fixed card (see Commander Dossiers). Players choose a chass
 
 ## Commanders
 
-Six AI commanders are playful, fictionalised gameplay interpretations of public-domain historical figures: Abraham Lincoln, Genghis Khan, Attila the Hun, Julius Caesar, Napoleon Bonaparte, and Queen Elizabeth I. They are not claims about the real people's tactics, beliefs, or character, and their in-game lines are original, not quotations. Each commander's doctrine is data in `src/ai/commanders.js`: target priorities, weapon preferences, risk tolerance, terrain weighting, aim variance, patience, ammunition conservation, and stat ratings. Difficulty (Recruit, Veteran, Ace) changes only search density, aim spread, and memory.
+Six AI commanders are playful, fictionalised gameplay interpretations of public-domain historical figures: Abraham Lincoln, Genghis Khan, Attila the Hun, Julius Caesar, Napoleon Bonaparte, and Queen Elizabeth I. They are not claims about the real people's tactics, beliefs, or character, and their in-game lines are original, not quotations. Each commander drives a tank that says who is inside: Lincoln's turret wears a tall stovepipe hat, Napoleon's a bicorne with a tricolour cockade, Elizabeth's a jewelled crown on a lace ruff, Caesar's a laurel-ringed golden helm with an eagle standard at the rear, Genghis Khan's a fur-trimmed spiked helmet with a horsetail standard, and Attila's a wolf-pelt helm with bone spikes and an iron ram. A destroyed commander leaves its keepsake beside the wreck. The sprites are in `src/ui/sprites.js` and also appear as portraits in the dossiers and briefing. Each commander's doctrine is data in `src/ai/commanders.js`: target priorities, weapon preferences, risk tolerance, terrain weighting, aim variance, patience, ammunition conservation, and stat ratings. Difficulty (Recruit, Veteran, Ace) changes only search density, aim spread, and memory.
 
 ## Architecture
 
@@ -81,15 +106,17 @@ Six AI commanders are playful, fictionalised gameplay interpretations of public-
 src/core/   deterministic simulation: no DOM, no Math.random, no timers
   engine.js     battle state, commands, fixed-tick step, damage, craters, falls, fire, turn order, outcomes, replay
   physics.js    projectile launch/step/trace shared by live shots, preview, AI, and map validation
-  weapons.js    validated weapon registry (UI, help, armory, firing, and AI all read it)
+  weapons.js    validated weapon registry (UI, help, armory, firing, and AI all read it) and shared inventory helpers
+  defenses.js   validated defense registry (active and automatic equipment)
   ratings.js    stat ratings, chassis, and their mechanical multipliers
   mapgen.js     seeded fair map generator with bounded retries and a safe fallback
   terrain.js, rng.js, math.js (series-based trig for cross-browser determinism), weather.js, clock.js (fixed-step driver)
 src/ai/     shared candidate-shot evaluator (ai.js), commander data (commanders.js), batch simulation (batch.js)
-src/game/   state machine, versioned storage, settings, themes, economy, tournament, records, replays, map format, challenges
-src/ui/     app controller, canvas renderer, effects, synthesised audio, battle log, screens, map editor
+src/game/   state machine, versioned storage, settings, themes, economy, tournament, records, unlocks, replays, map format, challenges
+src/ui/     app controller, canvas renderer, commander tank sprites, effects, synthesised audio, battle log, screens, map editor
 tests/      node:test suites for engine, rules, AI, and game layer
-scripts/    simulate.mjs (AI batch report), browser-smoke.mjs + cdp.mjs (optional headless Chrome checks)
+scripts/    simulate.mjs (AI batch report), build-single.mjs (single-file build), browser-smoke.mjs + cdp.mjs (optional headless Chrome checks)
+.githooks/  pre-commit: rebuilds standalone/scorched-berth.html
 ```
 
 - The simulation runs on a fixed 200 Hz tick, independent of frame rate and display size. Rendering reads state; effects and sounds react to engine events and never feed back.

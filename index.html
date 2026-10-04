@@ -56,7 +56,7 @@
           <p class="keyhint" id="angle-help">←/→ angle · ↑/↓ power · hold Shift ×5</p>
         </div>
         <fieldset class="hud-weapons box" id="hud-weapons">
-          <legend>PAYLOAD <span class="keyhint">1–6 · [ ]</span></legend>
+          <legend>PAYLOAD <span class="keyhint" id="weapon-keyhint">1–6 · [ ]</span></legend>
           <div class="weapon-list" id="weapon-list" role="radiogroup" aria-label="Payload"></div>
           <p class="weapon-detail" id="weapon-detail"></p>
         </fieldset>
@@ -64,6 +64,11 @@
           <button type="button" class="btn-fire" id="btn-fire" aria-keyshortcuts="Space Enter">FIRE <kbd>SPACE</kbd></button>
           <div class="wind-readout" id="wind-readout"></div>
         </div>
+        <fieldset class="hud-defense box" id="hud-defense">
+          <legend>DEFENSE <span class="keyhint">D · deploys when your turn ends</span></legend>
+          <div class="defense-list" id="defense-list" role="radiogroup" aria-label="Defense to deploy this turn"></div>
+          <p class="weapon-detail" id="defense-detail"></p>
+        </fieldset>
         <div class="hud-roster box" id="hud-roster" aria-label="Tanks"></div>
         <div class="hud-log box">
           <h2 class="box-title">BATTLE LOG</h2>

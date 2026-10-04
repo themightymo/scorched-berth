@@ -5,9 +5,11 @@
 import {
   W, TICK, GRAVITY, BEDROCK, MAX_FLIGHT_TICKS, RESOLVE_HOLD_TICKS, MISS_HOLD_TICKS,
   FALL_SAFE_DISTANCE, FALL_DAMAGE_PER_PX, ANGLE_MIN, ANGLE_MAX, POWER_MIN, POWER_MAX, DEFAULT_MAX_TURNS, PAD_HALF_WIDTH,
+  SKY_LIMIT, TANK_HALF_WIDTH,
 } from './constants.js';
-import { clamp, dist, hashValue } from './math.js';
+import { clamp, dist, hashValue, dsin, dcos } from './math.js';
 import { createRng, rngState, normalizeSeedCode } from './rng.js';
+import { getDefense } from './defenses.js';
 import { getWeapon, defaultInventory, sanitizeInventory, hasAmmo, damageAt, WEAPON_IDS } from './weapons.js';
 import { groundAt, supportY, carve, flowExtent, flattenPad, sanitizeTerrain } from './terrain.js';
 import { launch, stepBallistic, tankHit, applyWalls, SHOOTER_GRACE_TICKS } from './physics.js';
@@ -95,6 +97,7 @@ export function createBattle(input) {
       inventory: { ...p.inventory },
       angle: x < W / 2 ? 45 : 135, power: 65, weapon: 'shell',
       falling: null, memo: { lastTarget: null, streak: 0 }, shots: 0,
+      fx: { shield: 0, deflector: false, fireproof: 0, anchor: 0 }, pending: null,
     };
   });
   const weather = WEATHER[config.weather];
@@ -109,6 +112,15 @@ export function createBattle(input) {
   };
   state.actor = firstActor(state);
   emit(state, { t: 'battleStart', seed: config.seed });
+  // Hull plating is bolted on as the battle starts (one plate per battle).
+  const plating = getDefense('plating');
+  for (const t of tanks) {
+    if ((t.inventory.plating ?? 0) <= 0) continue;
+    t.inventory.plating--;
+    t.hp += plating.params.armour;
+    t.maxHp += plating.params.armour;
+    emit(state, { t: 'defense', by: t.id, item: 'plating', amount: plating.params.armour });
+  }
   emit(state, { t: 'turn', actor: state.actor, wind: state.wind });
   return state;
 }
@@ -132,6 +144,22 @@ export function windLimits(state) {
   return { max: state.config.rules.windMax ?? weather.windMax, step: state.config.rules.windStep ?? weather.windStep };
 }
 
+/**
+ * Why a tank cannot queue an active defense right now, or null when it can.
+ * Defenses always consume stock, even under the unlimited-ammo rule.
+ */
+export function defenseBlocked(tank, id) {
+  const d = getDefense(id);
+  if (!d || d.mode !== 'active') return 'Unknown defense.';
+  if ((tank.inventory?.[id] ?? 0) <= 0) return `No ${d.name} left.`;
+  const fx = tank.fx ?? {};
+  if (id === 'shield' && fx.shield >= d.params.absorb) return 'Shield already at full strength.';
+  if (id === 'deflector' && fx.deflector) return 'Deflector field already up.';
+  if (id === 'repair' && tank.hp >= tank.maxHp) return 'Armour is already full.';
+  if (id === 'anchor' && fx.anchor >= d.params.rounds) return 'Anchor already set.';
+  return null;
+}
+
 /** Returns null when legal, otherwise a human-readable reason. */
 export function legalCommand(state, cmd) {
   if (!cmd || cmd.type !== 'fire') return 'Unknown command.';
@@ -143,6 +171,7 @@ export function legalCommand(state, cmd) {
   if (!state.config.rules.unlimitedAmmo && !hasAmmo(t.inventory, cmd.weapon)) return 'Out of that ammunition.';
   if (!Number.isInteger(cmd.angle) || cmd.angle < ANGLE_MIN || cmd.angle > ANGLE_MAX) return 'Angle out of range.';
   if (!Number.isInteger(cmd.power) || cmd.power < POWER_MIN || cmd.power > POWER_MAX) return 'Power out of range.';
+  if (cmd.use != null) return defenseBlocked(t, cmd.use);
   return null;
 }
 
@@ -159,12 +188,33 @@ export function applyCommand(state, cmd) {
   }
   const record = { type: 'fire', actor: cmd.actor, weapon: cmd.weapon, angle: cmd.angle, power: cmd.power };
   if (Number.isInteger(cmd.target)) record.target = cmd.target;
+  // An active defense rides along with the shot and deploys when the turn ends.
+  t.pending = cmd.use ?? null;
+  if (cmd.use != null) record.use = cmd.use;
   state.commands.push(record);
-  emit(state, { t: 'fire', by: cmd.actor, weapon: cmd.weapon, angle: cmd.angle, power: cmd.power });
-  state.projectiles = [{ ...launch(t, cmd.angle, cmd.power), kind: weapon.projectile.kind, weapon: weapon.id, owner: cmd.actor, age: 0 }];
+  emit(state, { t: 'fire', by: cmd.actor, weapon: cmd.weapon, angle: cmd.angle, power: cmd.power, use: cmd.use ?? null });
+  state.projectiles = [launchPayload(t, weapon, cmd)];
   state.shot = { owner: cmd.actor, weapon: weapon.id, explosions: 0, offscreen: false, enemyDamage: 0 };
   state.phase = 'projectile';
   return { ok: true };
+}
+
+/** The first projectile of a shot. Beams fly straight; plasma never leaves the tank. */
+function launchPayload(t, weapon, cmd) {
+  const base = { kind: weapon.projectile.kind, weapon: weapon.id, owner: cmd.actor, age: 0 };
+  const pr = weapon.projectile;
+  if (pr.kind === 'plasma') {
+    const u = (cmd.power - POWER_MIN) / (POWER_MAX - POWER_MIN);
+    return { ...base, x: t.x, y: t.y - 10, vx: 0, vy: 0, charge: pr.charge, radiusScale: pr.minScale + (1 - pr.minScale) * u, scale: 1 + pr.focus * (1 - u) };
+  }
+  const p = { ...base, ...launch(t, cmd.angle, cmd.power) };
+  if (pr.kind === 'beam') {
+    p.vx = dcos(cmd.angle) * pr.speed;
+    p.vy = -dsin(cmd.angle) * pr.speed;
+    p.travel = 0;
+    p.range = cmd.power * pr.rangePerPower;
+  }
+  return p;
 }
 
 /** Apply the attacker's firepower and the target's armour ratings. */
@@ -177,6 +227,13 @@ function scaled(state, base, by, to) {
 function damageTank(state, idx, amount, by, cause) {
   const t = state.tanks[idx];
   if (!t.alive || amount <= 0) return 0;
+  if (cause === 'blast' && t.fx?.shield > 0) {
+    const absorbed = Math.min(t.fx.shield, amount);
+    t.fx.shield -= absorbed;
+    amount -= absorbed;
+    emit(state, { t: 'shieldHit', by, to: idx, absorbed, left: t.fx.shield });
+    if (amount <= 0) return 0;
+  }
   const dealt = Math.min(t.hp, amount);
   t.hp -= dealt;
   emit(state, { t: 'damage', by, to: idx, amount: dealt, cause });
@@ -189,32 +246,123 @@ function damageTank(state, idx, amount, by, cause) {
   return dealt;
 }
 
+/**
+ * Detonate projectile p at (x, y). Returns follow-on projectiles (leapfrog
+ * hops, funky bomblets) for the caller to keep flying.
+ * p.scale weakens damage and crater (hops, bomblets); p.radiusScale widens or
+ * narrows the damage radius (plasma). A plasma blast spares its firer.
+ */
 function explode(state, p, x, y, directHit = -1) {
   const w = getWeapon(p.weapon);
+  const k = p.scale ?? 1;
+  const blastRadius = w.damage.radius * (p.radiusScale ?? 1);
+  const spare = w.projectile.kind === 'plasma' ? p.owner : -1;
   if (state.shot) state.shot.explosions++;
-  emit(state, { t: 'explosion', x, y, weapon: w.id, radius: w.crater.radius, by: p.owner, kind: p.kind });
+  const r = Math.max(4, Math.round(w.crater.radius * k));
+  const shown = w.crater.shape === 'none' ? blastRadius : r;
+  emit(state, { t: 'explosion', x, y, weapon: w.id, radius: Math.round(shown), by: p.owner, kind: p.kind });
   // Damage first, measured against tank centres before the crater moves them.
-  for (let i = 0; i < state.tanks.length; i++) {
-    const t = state.tanks[i];
-    if (!t.alive) continue;
-    // A direct hit always deals the weapon's full damage to the tank struck.
-    const base = i === directHit ? w.damage.max : damageAt(w, dist(x, y, t.x, t.y - 8));
-    if (base > 0) damageTank(state, i, scaled(state, base, p.owner, i), p.owner, 'blast');
+  if (w.damage.max > 0) {
+    for (let i = 0; i < state.tanks.length; i++) {
+      const t = state.tanks[i];
+      if (!t.alive || i === spare) continue;
+      // A direct hit always deals the weapon's full (scaled) damage to the tank struck.
+      const base = Math.round((i === directHit ? w.damage.max : damageAt(w, dist(x, y, t.x, t.y - 8), blastRadius)) * k);
+      if (base > 0) damageTank(state, i, scaled(state, base, p.owner, i), p.owner, 'blast');
+    }
   }
-  const r = w.crater.radius;
-  if (w.crater.shape === 'shaft') carve(state.terrain, x, y, r, w.crater.depth);
-  else carve(state.terrain, x, y, r, r);
-  extinguish(state, x - r, x + r);
+  if (w.crater.shape === 'mound') {
+    raiseMound(state, x, y, r, p.owner);
+    extinguish(state, x - r, x + r, 'dirt');
+  } else if (w.crater.shape !== 'none') {
+    const held = anchoredGround(state);
+    if (w.crater.shape === 'shaft') carve(state.terrain, x, y, r, w.crater.depth * k);
+    else carve(state.terrain, x, y, r, r);
+    for (const [col, y0] of held) state.terrain[col] = Math.min(state.terrain[col], y0);
+    extinguish(state, x - r, x + r);
+  }
   if (w.projectile.kind === 'napalm') ignite(state, w, x, p.owner);
+  if (p.kind === 'leapfrog') return leapfrogHop(state, p, w, x);
+  if (p.kind === 'funky') return funkyScatter(state, p, w, x);
+  return [];
 }
 
-function extinguish(state, a, b) {
+/** Integer hash → [0, 1). Deterministic stand-in for randomness inside a shot. */
+function hash01(n) {
+  let a = n | 0;
+  a = Math.imul(a ^ (a >>> 16), 0x45d9f3b);
+  a = Math.imul(a ^ (a >>> 16), 0x45d9f3b);
+  return ((a ^ (a >>> 16)) >>> 0) / 4294967296;
+}
+
+function leapfrogHop(state, p, w, x) {
+  const left = p.hops ?? w.projectile.hops;
+  if (left <= 0) return [];
+  const { hopSpeed, carry, decay } = w.projectile;
+  const dir = Math.sign(p.vx) || 1;
+  const vx = dir * Math.max(70, Math.abs(p.vx) * carry);
+  const cx = clamp(x, 0, W);
+  emit(state, { t: 'hop', x: cx, y: groundAt(state.terrain, cx), by: p.owner, left: left - 1 });
+  // Past the shooter's grace window: a hop can come back and hit its firer.
+  return [{ x: cx, y: groundAt(state.terrain, cx) - 3, vx, vy: -hopSpeed * (p.scale ?? 1), kind: 'leapfrog', weapon: p.weapon, owner: p.owner, age: SHOOTER_GRACE_TICKS + 1, hops: left - 1, scale: (p.scale ?? 1) * decay }];
+}
+
+function funkyScatter(state, p, w, x) {
+  const { count, scale } = w.projectile;
+  const cx = clamp(x, 0, W);
+  const y = groundAt(state.terrain, cx) - 3;
+  const seed = Math.round(cx) * 31 + state.tick * 131 + (p.owner ?? 7) * 977;
+  const out = [];
+  for (let k = 0; k < count; k++) {
+    const u = hash01(seed + k * 7919), v = hash01(seed + k * 104729 + 1);
+    out.push({ x: cx, y, vx: (u * 2 - 1) * 230, vy: -(150 + v * 260), kind: 'funkylet', hue: k, weapon: p.weapon, owner: p.owner, age: SHOOTER_GRACE_TICKS + 1, scale });
+  }
+  emit(state, { t: 'scatter', x: cx, y, count, by: p.owner });
+  return out;
+}
+
+/**
+ * Drop a ball of earth centred on (x, y). Where the ball would float over a
+ * deeper hole the dirt falls in instead. Columns under a tank stay put, so a
+ * tank caught in it ends up in a pit with walls of dirt around it.
+ */
+function raiseMound(state, x, y, r, owner) {
+  const t = state.terrain;
+  const keep = state.tanks.filter((o) => o.alive).map((o) => o.x);
+  const x0 = Math.max(0, Math.ceil(x - r)), x1 = Math.min(W, Math.floor(x + r));
+  for (let col = x0; col <= x1; col++) {
+    if (keep.some((tx) => Math.abs(tx - col) <= TANK_HALF_WIDTH)) continue;
+    const u = (col - x) / r;
+    const h = r * Math.sqrt(Math.max(0, 1 - u * u));
+    const top = y + h >= t[col] ? Math.min(t[col], y - h) : t[col] - 2 * h;
+    t[col] = Math.max(SKY_LIMIT, top);
+  }
+  state.tanks.forEach((o, i) => {
+    if (!o.alive || Math.abs(o.x - x) > r + TANK_HALF_WIDTH) return;
+    const reach = TANK_HALF_WIDTH + 4;
+    const l = groundAt(t, o.x - reach), rr = groundAt(t, o.x + reach);
+    if (Math.max(l, rr) < o.y - 14) emit(state, { t: 'buried', to: i, by: owner });
+  });
+}
+
+/** Ground columns under anchored tanks, saved so a crater cannot lower them. */
+function anchoredGround(state) {
+  const held = [];
+  for (const t of state.tanks) {
+    if (!t.alive || !(t.fx?.anchor > 0)) continue;
+    const a = Math.max(0, Math.round(t.x - TANK_HALF_WIDTH)), b = Math.min(W, Math.round(t.x + TANK_HALF_WIDTH));
+    for (let c = a; c <= b; c++) held.push([c, state.terrain[c]]);
+  }
+  return held;
+}
+
+function extinguish(state, a, b, cause = 'blast') {
   const next = [];
   for (const f of state.fires) {
     if (f.x1 < a || f.x0 > b) { next.push(f); continue; }
     if (f.x0 < a - 8) next.push({ ...f, x1: Math.floor(a) });
     if (f.x1 > b + 8) next.push({ ...f, x0: Math.ceil(b) });
-    emit(state, { t: 'extinguish', x0: Math.max(f.x0, a), x1: Math.min(f.x1, b) });
+    emit(state, { t: 'extinguish', x0: Math.max(f.x0, a), x1: Math.min(f.x1, b), cause });
   }
   state.fires = next;
 }
@@ -256,6 +404,14 @@ function stepProjectile(state, p, out) {
     out.push(p);
     return;
   }
+  if (p.kind === 'plasma') {
+    p.age++;
+    if (p.age >= p.charge) explode(state, p, p.x, p.y);
+    else out.push(p);
+    return;
+  }
+  if (p.kind === 'rolling') return stepRoller(state, p, out);
+  if (p.kind === 'beam') return stepBeam(state, p, out);
   const wasRising = p.vy < 0;
   stepBallistic(p, state.wind, state.config.rules.gravity);
   p.age++;
@@ -264,30 +420,139 @@ function stepProjectile(state, p, out) {
     return;
   }
   if (!applyWalls(p, state.config.rules.walls) || p.y > BEDROCK + 60) {
-    if (state.shot && !state.shot.offscreen) {
-      state.shot.offscreen = true;
-      emit(state, { t: 'offscreen', by: p.owner, x: clamp(p.x, 0, W) });
-    }
+    leaveField(state, p);
     return;
   }
   if (p.age > MAX_FLIGHT_TICKS) { emit(state, { t: 'fizzle', by: p.owner }); return; }
+  if (screenProjectile(state, p)) return;
   const hit = tankHit(state.tanks, p.x, p.y, p.age <= SHOOTER_GRACE_TICKS ? p.owner : -1);
-  if (hit >= 0) { emit(state, { t: 'directHit', by: p.owner, to: hit }); explode(state, p, p.x, p.y, hit); return; }
+  if (hit >= 0) {
+    emit(state, { t: 'directHit', by: p.owner, to: hit });
+    for (const c of explode(state, p, p.x, p.y, hit)) out.push(c);
+    return;
+  }
   const g = groundAt(terrain, p.x);
   if (p.y >= g) {
     if (p.kind === 'burrow') {
+      const w = getWeapon(p.weapon);
       const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy) || 1;
-      emit(state, { t: 'burrow', x: p.x, y: g, by: p.owner });
+      emit(state, { t: 'burrow', x: p.x, y: g, by: p.owner, forks: w.projectile.forks ?? 1 });
       // Drill steeply downward: at least 0.7 of the motion is vertical.
       let dx = p.vx / speed, dy = p.vy / speed;
       if (dy < 0.7) { dy = 0.7; dx = Math.sign(dx || 1) * 0.714142842854285; }
-      out.push({ x: p.x, y: g, dx, dy, kind: 'drill', weapon: p.weapon, owner: p.owner, age: p.age, drilled: 0 });
+      const forks = w.projectile.forks ?? 1;
+      for (let k = 0; k < forks; k++) {
+        // Fan the warheads out sideways; renormalise without trig so it stays deterministic.
+        const fx = dx + (k - (forks - 1) / 2) * (w.projectile.forkSpread ?? 0);
+        const n = Math.sqrt(fx * fx + dy * dy);
+        out.push({ x: p.x, y: g, dx: fx / n, dy: dy / n, kind: 'drill', weapon: p.weapon, owner: p.owner, age: p.age, drilled: 0 });
+      }
       return;
     }
-    explode(state, p, p.x, g);
+    if (p.kind === 'roller') {
+      const w = getWeapon(p.weapon);
+      const l = groundAt(terrain, p.x - 6), r = groundAt(terrain, p.x + 6);
+      const dir = Math.abs(r - l) < 2 ? (Math.sign(p.vx) || 1) : r > l ? 1 : -1;
+      emit(state, { t: 'roll', x: p.x, y: g, by: p.owner, dir });
+      out.push({ x: p.x, y: g, kind: 'rolling', dir, rolled: 0, low: { x: p.x, y: g }, weapon: p.weapon, owner: p.owner, age: p.age, vx: dir * w.projectile.speed, vy: 0 });
+      return;
+    }
+    for (const c of explode(state, p, p.x, g)) out.push(c);
     return;
   }
   out.push(p);
+}
+
+function leaveField(state, p) {
+  if (state.shot && !state.shot.offscreen) {
+    state.shot.offscreen = true;
+    emit(state, { t: 'offscreen', by: p.owner, x: clamp(p.x, 0, W) });
+  }
+}
+
+/**
+ * A heavy roller follows the surface downhill. It explodes on reaching a tank,
+ * the bottom of a valley (the ground ahead climbs more than a few pixels above
+ * the lowest point it has passed), or the end of its range.
+ */
+function stepRoller(state, p, out) {
+  const w = getWeapon(p.weapon);
+  const d = w.projectile.speed * TICK;
+  p.age++;
+  const nx = p.x + p.dir * d;
+  if (nx < 0 || nx > W) { leaveField(state, p); return; }
+  p.x = nx;
+  p.y = groundAt(state.terrain, nx);
+  p.rolled += d;
+  if (p.y >= p.low.y) p.low = { x: p.x, y: p.y };
+  for (let i = 0; i < state.tanks.length; i++) {
+    const t = state.tanks[i];
+    if (t.alive && Math.abs(t.x - p.x) < TANK_HALF_WIDTH && Math.abs(t.y - p.y) < 18) {
+      emit(state, { t: 'directHit', by: p.owner, to: i });
+      explode(state, p, p.x, p.y, i);
+      return;
+    }
+  }
+  if (p.y < p.low.y - 5) { explode(state, p, p.low.x, p.low.y); return; }
+  if (p.rolled >= w.projectile.range) { explode(state, p, p.x, p.y); return; }
+  out.push(p);
+}
+
+/** A laser beam: straight line, no gravity or wind, stepped in short hops so it cannot skip a tank. */
+function stepBeam(state, p, out) {
+  const SUB = 3;
+  const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy) || 1;
+  const steps = Math.max(1, Math.round((speed * TICK) / SUB));
+  p.age++;
+  for (let k = 0; k < steps; k++) {
+    const len = Math.sqrt(p.vx * p.vx + p.vy * p.vy) || 1;
+    p.x += (p.vx / len) * SUB; p.y += (p.vy / len) * SUB;
+    p.travel += SUB;
+    if (p.x < 0 || p.x > W || p.y > BEDROCK + 60) { leaveField(state, p); return; }
+    if (p.travel >= p.range) { emit(state, { t: 'beamEnd', x: p.x, y: p.y, by: p.owner }); return; }
+    if (screenProjectile(state, p)) return;
+    const hit = tankHit(state.tanks, p.x, p.y, p.age <= 3 ? p.owner : -1);
+    if (hit >= 0) { emit(state, { t: 'directHit', by: p.owner, to: hit }); explode(state, p, p.x, p.y, hit); return; }
+    const g = groundAt(state.terrain, p.x);
+    if (p.y >= g) { explode(state, p, p.x, g); return; }
+  }
+  out.push(p);
+}
+
+/**
+ * Deflector fields and point-defense guns react to a hostile projectile that is
+ * approaching them. Returns true when the projectile was destroyed.
+ */
+function screenProjectile(state, p) {
+  for (let i = 0; i < state.tanks.length; i++) {
+    const t = state.tanks[i];
+    if (!t.alive || i === p.owner) continue;
+    const deflect = t.fx?.deflector;
+    const guns = p.kind !== 'beam' && (t.inventory.interceptor ?? 0) > 0;
+    if (!deflect && !guns) continue;
+    const cx = t.x, cy = t.y - 10;
+    const dx = p.x - cx, dy = p.y - cy;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    const radius = deflect ? getDefense('deflector').params.radius : getDefense('interceptor').params.radius;
+    if (d >= radius || d === 0) continue;
+    const nx = dx / d, ny = dy / d;
+    const dot = p.vx * nx + p.vy * ny;
+    if (dot >= 0) continue; // moving away: not a threat
+    if (deflect) {
+      // Mirror the velocity about the field's surface; the round now belongs to the defender.
+      p.vx -= 2 * dot * nx; p.vy -= 2 * dot * ny;
+      p.x = cx + nx * radius; p.y = cy + ny * radius;
+      emit(state, { t: 'deflect', to: i, by: p.owner, x: p.x, y: p.y });
+      p.owner = i;
+      p.age = 0;
+      t.fx.deflector = false;
+      return false;
+    }
+    t.inventory.interceptor--;
+    emit(state, { t: 'intercept', to: i, by: p.owner, x: p.x, y: p.y, weapon: p.weapon, left: t.inventory.interceptor });
+    return true;
+  }
+  return false;
 }
 
 /** Advance falling tanks one tick. Returns true while any tank is falling. */
@@ -298,7 +563,13 @@ function settleTanks(state) {
     const sup = supportY(state.terrain, t.x);
     if (t.y < sup - 0.001) {
       if (!t.falling) t.falling = { from: t.y, vy: 0 };
-      t.falling.vy = Math.min(t.falling.vy + GRAVITY * 1.4 * TICK, 600);
+      if (t.alive && !t.falling.chute && t.y - t.falling.from > FALL_SAFE_DISTANCE && (t.inventory.parachute ?? 0) > 0) {
+        t.inventory.parachute--;
+        t.falling.chute = true;
+        emit(state, { t: 'parachute', to: i });
+      }
+      const terminal = t.falling.chute ? getDefense('parachute').params.drift : 600;
+      t.falling.vy = Math.min(t.falling.vy + GRAVITY * 1.4 * TICK, terminal);
       t.y = Math.min(sup, t.y + t.falling.vy * TICK);
       if (t.y >= sup - 0.001) land(state, i, sup);
       else falling = true;
@@ -314,10 +585,11 @@ function settleTanks(state) {
 function land(state, i, y) {
   const t = state.tanks[i];
   const drop = y - t.falling.from;
+  const chute = !!t.falling.chute;
   t.y = y;
   t.falling = null;
   if (!t.alive) return;
-  const amount = Math.round(Math.max(0, drop - FALL_SAFE_DISTANCE) * FALL_DAMAGE_PER_PX * (t.mods?.fall ?? 1));
+  const amount = chute ? 0 : Math.round(Math.max(0, drop - FALL_SAFE_DISTANCE) * FALL_DAMAGE_PER_PX * (t.mods?.fall ?? 1));
   emit(state, { t: 'fall', to: i, distance: Math.round(drop) });
   if (amount > 0) damageTank(state, i, amount, state.shot?.owner ?? null, 'fall');
 }
@@ -354,6 +626,7 @@ function burnTanks(state) {
     if (!t.alive) continue;
     let fire = null;
     for (const f of state.fires) if (t.x >= f.x0 && t.x <= f.x1 && (!fire || f.burn > fire.burn)) fire = f;
+    if (t.fx?.fireproof > 0) continue;
     if (fire) damageTank(state, i, scaled(state, fire.burn, fire.by, i), fire.by, 'fire');
     if (t.alive && state.vents.some((v) => t.x >= v.x0 - 6 && t.x <= v.x1 + 6)) damageTank(state, i, scaled(state, VENT_BURN, null, i), null, 'vent');
   }
@@ -387,7 +660,79 @@ export function evaluateOutcome(state) {
   return null;
 }
 
+/** Tick the actor's timed effects, then deploy the defense queued with its shot. */
+function deployDefense(state) {
+  const i = state.actor;
+  const t = state.tanks[i];
+  const id = t.pending;
+  t.pending = null;
+  if (t.fx.fireproof > 0) t.fx.fireproof--;
+  if (t.fx.anchor > 0) t.fx.anchor--;
+  if (!id || !t.alive) return;
+  const d = getDefense(id);
+  const p = d.params;
+  const event = { t: 'defense', by: i, item: id };
+  switch (id) {
+    case 'shield': t.fx.shield = p.absorb; break;
+    case 'deflector': t.fx.deflector = true; break;
+    case 'repair': {
+      const before = t.hp;
+      t.hp = Math.min(t.maxHp, t.hp + p.heal);
+      event.amount = t.hp - before;
+      break;
+    }
+    case 'foam':
+      extinguish(state, t.x - p.reach, t.x + p.reach, 'foam');
+      t.fx.fireproof = p.rounds;
+      break;
+    case 'berm': raiseBerm(state, t, p); break;
+    case 'anchor': t.fx.anchor = p.rounds; break;
+    case 'relocate': {
+      const x = relocationSpot(state, i, p);
+      if (x == null) { emit(state, { t: 'defenseFailed', by: i, item: id }); return; }
+      event.from = t.x;
+      t.x = x;
+      t.y = supportY(state.terrain, x);
+      t.falling = null;
+      event.x = x;
+      break;
+    }
+    default: return;
+  }
+  t.inventory[id]--;
+  emit(state, event);
+}
+
+/** Two parabolic dirt mounds either side of the tank; never on top of another tank. */
+function raiseBerm(state, t, { inner, outer, height }) {
+  const span = outer - inner;
+  for (const dir of [-1, 1]) {
+    for (let k = 0; k <= span; k++) {
+      const col = Math.round(t.x + dir * (inner + k));
+      if (col < 0 || col > W) continue;
+      if (state.tanks.some((o) => o !== t && o.alive && Math.abs(o.x - col) < TANK_HALF_WIDTH + 6)) continue;
+      const u = k / span;
+      const h = height * 4 * u * (1 - u);
+      state.terrain[col] = Math.max(SKY_LIMIT, state.terrain[col] - h);
+    }
+  }
+}
+
+/** A random spot clear of every other tank and hazard, drawn from the battle RNG. */
+function relocationSpot(state, idx, { clearance, tries }) {
+  const R = createRng(state.rng);
+  for (let k = 0; k < tries; k++) {
+    const x = R.int(60, W - 60);
+    if (state.tanks.some((o, j) => j !== idx && o.alive && Math.abs(o.x - x) < clearance)) continue;
+    if (state.vents.some((v) => x >= v.x0 - 30 && x <= v.x1 + 30)) continue;
+    if (state.fires.some((f) => x >= f.x0 - 10 && x <= f.x1 + 10)) continue;
+    return x;
+  }
+  return null;
+}
+
 function endTurn(state) {
+  deployDefense(state);
   burnTanks(state);
   state.shot = null;
   const outcome = evaluateOutcome(state);
@@ -433,7 +778,7 @@ export function cloneForSim(state) {
   return {
     ...state,
     terrain: state.terrain.slice(),
-    tanks: state.tanks.map((t) => ({ ...t, inventory: { ...t.inventory }, memo: { ...t.memo }, falling: t.falling ? { ...t.falling } : null })),
+    tanks: state.tanks.map((t) => ({ ...t, inventory: { ...t.inventory }, memo: { ...t.memo }, fx: { ...t.fx }, falling: t.falling ? { ...t.falling } : null })),
     fires: state.fires.map((f) => ({ ...f })),
     projectiles: [],
     events: [],

@@ -3,7 +3,7 @@
 export function battleStats(state) {
   const tanks = state.tanks.map((t, i) => ({
     id: i, name: t.name, kind: t.kind, commander: t.commander,
-    shots: 0, hits: 0, damage: 0, taken: 0, self: 0, kills: 0, falls: 0, burns: 0,
+    shots: 0, hits: 0, direct: 0, damage: 0, taken: 0, self: 0, kills: 0, falls: 0, burns: 0,
     survived: t.alive, eliminatedTurn: null, weapons: {},
   }));
   let shot = null; // { by, hit }
@@ -13,6 +13,8 @@ export function battleStats(state) {
       const s = tanks[e.by];
       s.shots++;
       s.weapons[e.weapon] = (s.weapons[e.weapon] ?? 0) + 1;
+    } else if (e.t === 'directHit') {
+      if (e.by != null && e.by !== e.to) tanks[e.by].direct++;
     } else if (e.t === 'damage') {
       const victim = tanks[e.to];
       victim.taken += e.amount;
