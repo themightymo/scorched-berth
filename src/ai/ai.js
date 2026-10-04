@@ -9,7 +9,7 @@ import { getDefense } from '../core/defenses.js';
 import { WEAPONS, getWeapon, hasAmmo, damageAt } from '../core/weapons.js';
 import { createRng } from '../core/rng.js';
 import { clamp } from '../core/math.js';
-import { W, BEDROCK, BARREL_HEIGHT, ANGLE_MIN, ANGLE_MAX, POWER_MIN, POWER_MAX } from '../core/constants.js';
+import { W, BEDROCK, BARREL_HEIGHT, TANK_MID, ANGLE_MIN, ANGLE_MAX, POWER_MIN, POWER_MAX } from '../core/constants.js';
 import { NIGHT } from '../core/weather.js';
 import { getCommander, DIFFICULTY } from './commanders.js';
 
@@ -56,11 +56,11 @@ function quickValue(state, actorIdx, r, weights, selfWeight) {
   let v = 0;
   for (const [i, w] of weights) {
     const t = state.tanks[i];
-    const dx = t.x - r.x, dy = t.y - 8 - r.y;
+    const dx = t.x - r.x, dy = t.y - TANK_MID - r.y;
     v += w * damageAt(REFERENCE, Math.sqrt(dx * dx + dy * dy));
   }
   const me = state.tanks[actorIdx];
-  const sx = me.x - r.x, sy = me.y - 8 - r.y;
+  const sx = me.x - r.x, sy = me.y - TANK_MID - r.y;
   v -= selfWeight * damageAt(REFERENCE, Math.sqrt(sx * sx + sy * sy));
   return v;
 }
@@ -118,7 +118,7 @@ function specialCandidates(state, actorIdx, weapons, weights) {
     } else if (pr.kind === 'beam') {
       for (const i of weights.keys()) {
         const t = state.tanks[i];
-        const dx = t.x - me.x, dy = (me.y - BARREL_HEIGHT) - (t.y - 8);
+        const dx = t.x - me.x, dy = (me.y - BARREL_HEIGHT) - (t.y - TANK_MID);
         const a = clamp(Math.round((Math.atan2(dy, dx) * 180) / Math.PI), ANGLE_MIN, ANGLE_MAX);
         const p = clamp(Math.ceil(Math.sqrt(dx * dx + dy * dy) / pr.rangePerPower) + 4, POWER_MIN, POWER_MAX);
         out.push({ weapon: id, a, p });
@@ -254,7 +254,7 @@ export function decideShot(state, actorIdx = state.actor, options = {}) {
         diag.traces++;
         if ((r.kind === 'ground' || r.kind === 'tank') && s.target != null) {
           const t = state.tanks[s.target];
-          if (damageAt(w, Math.sqrt((t.x - r.x) ** 2 + (t.y - 8 - r.y) ** 2)) > 0 || r.tank === s.target) hits++;
+          if (damageAt(w, Math.sqrt((t.x - r.x) ** 2 + (t.y - TANK_MID - r.y) ** 2)) > 0 || r.tank === s.target) hits++;
         }
       }
       s.robust = hits / offsets.length;

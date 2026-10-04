@@ -5,7 +5,7 @@
 import {
   W, TICK, GRAVITY, BEDROCK, MAX_FLIGHT_TICKS, RESOLVE_HOLD_TICKS, MISS_HOLD_TICKS,
   FALL_SAFE_DISTANCE, FALL_DAMAGE_PER_PX, ANGLE_MIN, ANGLE_MAX, POWER_MIN, POWER_MAX, DEFAULT_MAX_TURNS, PAD_HALF_WIDTH,
-  SKY_LIMIT, TANK_HALF_WIDTH,
+  SKY_LIMIT, TANK_HALF_WIDTH, TANK_HEIGHT, TANK_MID,
 } from './constants.js';
 import { clamp, dist, hashValue, dsin, dcos } from './math.js';
 import { createRng, rngState, normalizeSeedCode } from './rng.js';
@@ -267,7 +267,7 @@ function explode(state, p, x, y, directHit = -1) {
       const t = state.tanks[i];
       if (!t.alive || i === spare) continue;
       // A direct hit always deals the weapon's full (scaled) damage to the tank struck.
-      const base = Math.round((i === directHit ? w.damage.max : damageAt(w, dist(x, y, t.x, t.y - 8), blastRadius)) * k);
+      const base = Math.round((i === directHit ? w.damage.max : damageAt(w, dist(x, y, t.x, t.y - TANK_MID), blastRadius)) * k);
       if (base > 0) damageTank(state, i, scaled(state, base, p.owner, i), p.owner, 'blast');
     }
   }
@@ -341,7 +341,7 @@ function raiseMound(state, x, y, r, owner) {
     if (!o.alive || Math.abs(o.x - x) > r + TANK_HALF_WIDTH) return;
     const reach = TANK_HALF_WIDTH + 4;
     const l = groundAt(t, o.x - reach), rr = groundAt(t, o.x + reach);
-    if (Math.max(l, rr) < o.y - 14) emit(state, { t: 'buried', to: i, by: owner });
+    if (Math.max(l, rr) < o.y - TANK_HEIGHT) emit(state, { t: 'buried', to: i, by: owner });
   });
 }
 
@@ -487,7 +487,7 @@ function stepRoller(state, p, out) {
   if (p.y >= p.low.y) p.low = { x: p.x, y: p.y };
   for (let i = 0; i < state.tanks.length; i++) {
     const t = state.tanks[i];
-    if (t.alive && Math.abs(t.x - p.x) < TANK_HALF_WIDTH && Math.abs(t.y - p.y) < 18) {
+    if (t.alive && Math.abs(t.x - p.x) < TANK_HALF_WIDTH && Math.abs(t.y - p.y) < TANK_HEIGHT + 2) {
       emit(state, { t: 'directHit', by: p.owner, to: i });
       explode(state, p, p.x, p.y, i);
       return;

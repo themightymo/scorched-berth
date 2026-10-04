@@ -67,8 +67,15 @@ test('settings persist and recover from missing, corrupt, future, and legacy dat
   assert.equal(legacy.status, 'migrated');
   assert.equal(legacy.data.audio.master, 0.25);
 
+  s.backend.setItem(KEYS.settings, JSON.stringify({ ...defaultSettings(), v: 1, preview: 'full' }));
+  const v1 = loadSettings(s);
+  assert.equal(v1.status, 'migrated');
+  assert.equal(v1.data.preview, 'partial', 'the old Full default moves to Partial once');
+  s.backend.setItem(KEYS.settings, JSON.stringify({ ...defaultSettings(), v: 1, preview: 'off' }));
+  assert.equal(loadSettings(s).data.preview, 'off', 'an Off choice is kept');
+
   const junk = sanitizeSettings({ preview: 'x', speed: 9, audio: { master: 7 }, playerName: '<script>' , theme: 'nope' });
-  assert.equal(junk.preview, 'full');
+  assert.equal(junk.preview, 'partial');
   assert.equal(junk.speed, 1);
   assert.equal(junk.audio.master, 1);
   assert.equal(junk.playerName, 'script');

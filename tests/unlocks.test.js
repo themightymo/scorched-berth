@@ -222,7 +222,7 @@ test('every new weapon replays exactly', () => {
 });
 
 test('the AI can find and use the laser and plasma blast', () => {
-  const laser = flatBattle({ xs: [300, 700], inventory: stocked({ laser: 2 }) });
+  const laser = flatBattle({ xs: [300, 550], inventory: stocked({ laser: 2 }) });
   laser.tanks[0].kind = 'ai';
   laser.tanks[0].commander = 'caesar';
   const one = decideShot(laser, 0, { timeBudgetMs: 2000, now: () => 0 });

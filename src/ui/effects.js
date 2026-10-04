@@ -8,12 +8,18 @@ const BUDGET = { full: 700, reduced: 220, off: 0 };
 
 export function createEffects() {
   const fx = {
-    particles: [], rings: [], floaters: [], trail: [],
+    particles: [], rings: [], floaters: [], trail: [], speech: [],
     shake: 0, shakeX: 0, shakeY: 0, flash: 0, cursor: 0,
   };
 
+  /** A speech bubble over a tank; a new line from the same tank replaces the old one. */
+  fx.say = (tank, text, seconds = 3.2) => {
+    fx.speech = fx.speech.filter((b) => b.tank !== tank);
+    fx.speech.push({ tank, text, life: seconds, max: seconds });
+  };
+
   fx.reset = (state) => {
-    fx.particles.length = 0; fx.rings.length = 0; fx.floaters.length = 0; fx.trail.length = 0;
+    fx.particles.length = 0; fx.rings.length = 0; fx.floaters.length = 0; fx.trail.length = 0; fx.speech.length = 0;
     fx.shake = 0; fx.flash = 0;
     fx.cursor = state ? state.events.length : 0;
   };
@@ -141,6 +147,8 @@ export function createEffects() {
     fx.rings = fx.rings.filter((r) => r.life > 0);
     for (const f of fx.floaters) { f.life -= dt; f.y -= (reduced ? 0 : 22) * dt; }
     fx.floaters = fx.floaters.filter((f) => f.life > 0).slice(-14);
+    for (const b of fx.speech) b.life -= dt;
+    fx.speech = fx.speech.filter((b) => b.life > 0);
     for (const t of fx.trail) t.life -= dt * 0.8;
     fx.trail = fx.trail.filter((t) => t.life > 0);
     if (state) for (const p of state.projectiles) {

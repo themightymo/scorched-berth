@@ -66,9 +66,9 @@ try {
   await check('settings and manual dialogs open and close', async () => {
     await page.click('#btn-settings');
     assert(await page.eval("document.getElementById('dlg-settings').open"), 'settings closed');
-    await page.eval("document.querySelector('#settings-form input[name=preview][value=partial]').click()");
+    await page.eval("document.querySelector('#settings-form input[name=preview][value=off]').click()");
     await page.key('Escape');
-    assert(await page.eval("JSON.parse(localStorage.getItem('scorched-berth.settings')).preview === 'partial'"), 'setting not persisted');
+    assert(await page.eval("JSON.parse(localStorage.getItem('scorched-berth.settings')).preview === 'off'"), 'setting not persisted');
     await page.key('h');
     assert(await page.eval("document.getElementById('dlg-help').open"), 'manual did not open');
     await page.key('Escape');

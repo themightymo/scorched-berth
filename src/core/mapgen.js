@@ -70,7 +70,7 @@ function pickSpawns(rng, count) {
   const span = (W - 2 * EDGE_MARGIN) / count;
   const xs = [];
   for (let i = 0; i < count; i++) {
-    const lo = EDGE_MARGIN + span * i + span * 0.22, hi = EDGE_MARGIN + span * (i + 1) - span * 0.22;
+    const lo = EDGE_MARGIN + span * i + span * 0.3, hi = EDGE_MARGIN + span * (i + 1) - span * 0.3;
     xs.push(Math.round(rng.range(lo, hi)));
   }
   return xs;
@@ -79,7 +79,7 @@ function pickSpawns(rng, count) {
 /** Check fairness rules. Returns an array of problems (empty = fair). */
 export function validateLayout({ terrain, spawns, vents = [] }, { checkReach = true } = {}) {
   const problems = [];
-  const minSep = Math.min(260, (W - 2 * EDGE_MARGIN) / Math.max(2, spawns.length) * 0.45);
+  const minSep = Math.min(300, (W - 2 * EDGE_MARGIN) / Math.max(2, spawns.length) * 0.55);
   spawns.forEach((x, i) => {
     if (x < EDGE_MARGIN || x > W - EDGE_MARGIN) problems.push(`spawn ${i} too close to edge`);
     for (let j = i + 1; j < spawns.length; j++) if (Math.abs(spawns[j] - x) < minSep) problems.push(`spawns ${i}/${j} too close`);

@@ -54,6 +54,7 @@ Add `?dev=1` to the URL to show the AI diagnostics overlay (target, score, predi
 | P, Esc | Pause / resume (freezes shots in flight and AI turns) |
 | H, ? | Field manual |
 | M | Mute |
+| K | Kibitz (you will be told off) |
 | ↑/↓, Enter, Esc | Navigate menus, confirm, go back |
 
 Every control also works with the mouse. Page scrolling is blocked only while gameplay keys are active. Hiding the tab pauses the battle.
@@ -61,7 +62,7 @@ Every control also works with the mouse. Page scrolling is blocked only while ga
 ## Rules
 
 - 90° fires straight up; below 90° fires right, above 90° fires left.
-- **Wind** pushes every projectile sideways at a steady rate. It shifts a little after every turn, more in a gale. The trajectory preview (Full, Partial, or Off in Settings) includes the current wind.
+- **Wind** pushes every projectile sideways at a steady rate. It shifts a little after every turn, more in a gale. The trajectory preview is set in Settings: Full draws the whole arc with wind, Partial (the default) draws the first third in still air so you must judge the wind, and Off draws nothing. With Partial or Off, a faint trail and an ✕ show where your previous shot landed.
 - **Damage** falls off linearly to zero at the blast radius. A direct hit deals full damage. Craters reshape the ground. Tanks fall when the ground beneath them is removed, and a fall of more than 20 m causes damage, applied once per fall.
 - **Payloads**: Standard Shell (unlimited), Heavy Shell, Mini Nuke, Cluster Charge (splits into five at the top of its arc), Napalm Canister (fire burns tanks at the end of each turn; blasts put it out; rain weakens it), and Burrowing Charge (drills before detonating; its shaft drops tanks above it). The field manual and armory list each payload's role and counterplay.
 - **Unlockable weapons**: ten more payloads, each a tribute to a classic from the original Scorched Earth, are earned from your service record. The **Arsenal** screen on the title menu shows each goal and your progress, and the debrief announces new unlocks. Once a weapon is unlocked, quick battles, hot-seat series, and map play-tests issue starting rounds, the tournament armory sells it, and sandbox lets you stock it. Daily and challenge battles keep their fixed arsenals. Sandbox and play-test battles do not count toward unlocks.
@@ -100,7 +101,7 @@ Each commander has a fixed card (see Commander Dossiers). Players choose a chass
 
 ## Commanders
 
-Six AI commanders are playful, fictionalised gameplay interpretations of public-domain historical figures: Abraham Lincoln, Genghis Khan, Attila the Hun, Julius Caesar, Napoleon Bonaparte, and Queen Elizabeth I. They are not claims about the real people's tactics, beliefs, or character, and their in-game lines are original, not quotations. Each commander drives a tank that says who is inside: Lincoln's turret wears a tall stovepipe hat, Napoleon's a bicorne with a tricolour cockade, Elizabeth's a jewelled crown on a lace ruff, Caesar's a laurel-ringed golden helm with an eagle standard at the rear, Genghis Khan's a fur-trimmed spiked helmet with a horsetail standard, and Attila's a wolf-pelt helm with bone spikes and an iron ram. A destroyed commander leaves its keepsake beside the wreck. The sprites are in `src/ui/sprites.js` and also appear as portraits in the dossiers and briefing. Each commander's doctrine is data in `src/ai/commanders.js`: target priorities, weapon preferences, risk tolerance, terrain weighting, aim variance, patience, ammunition conservation, and stat ratings. Difficulty (Recruit, Veteran, Ace) changes only search density, aim spread, and memory.
+Six AI commanders are playful, fictionalised gameplay interpretations of public-domain historical figures: Abraham Lincoln, Genghis Khan, Attila the Hun, Julius Caesar, Napoleon Bonaparte, and Queen Elizabeth I. They are not claims about the real people's tactics, beliefs, or character, and their in-game lines are original, not quotations. Each commander drives a tank that says who is inside: Lincoln's turret wears a tall stovepipe hat, Napoleon's a bicorne with a tricolour cockade, Elizabeth's a jewelled crown on a lace ruff, Caesar's a laurel-ringed golden helm with an eagle standard at the rear, Genghis Khan's a fur-trimmed spiked helmet with a horsetail standard, and Attila's a wolf-pelt helm with bone spikes and an iron ram. A destroyed commander leaves its keepsake beside the wreck. Tanks talk: now and then a tank cracks a line in character as it fires (about one shot in three), and every destroyed tank gets last words, picked at random from at least ten per commander (human tanks have their own set). The lines live in each commander's `barks` in `src/ai/commanders.js`. The sprites are in `src/ui/sprites.js` and also appear as portraits in the dossiers and briefing. Each commander's doctrine is data in `src/ai/commanders.js`: target priorities, weapon preferences, risk tolerance, terrain weighting, aim variance, patience, ammunition conservation, and stat ratings. Difficulty (Recruit, Veteran, Ace) changes only search density, aim spread, and memory.
 
 ## Architecture
 

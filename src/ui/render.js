@@ -1,8 +1,10 @@
 // Canvas renderer. Reads simulation state; never writes to it.
-// The battlefield is drawn into a 700×280 pixel buffer (half the world
-// resolution) and scaled up with nearest-neighbour sampling for a crisp,
-// low-resolution look. Labels and the trajectory preview are drawn on top at
-// full display resolution so they stay legible.
+// The battlefield is composed in a world-sized buffer. Sky, terrain, and
+// effects are drawn at half resolution (each pixel a 2×2 block, through a
+// scale transform) for a crisp, low-resolution look; tank sprites are drawn one
+// pixel per world unit so they stay small and detailed. The buffer is scaled up
+// with nearest-neighbour sampling. Labels and the trajectory preview are drawn
+// on top at full display resolution so they stay legible.
 
 import { W, H, BEDROCK } from '../core/constants.js';
 import { createRng } from '../core/rng.js';
@@ -25,7 +27,7 @@ function makeCanvas(w, h) {
 
 export function createRenderer(canvas) {
   const ctx = canvas.getContext('2d');
-  const buf = makeCanvas(LW, LH);
+  const buf = makeCanvas(W, H);
   const b = buf.getContext('2d');
   const terrainLayer = makeCanvas(LW, LH);
   const tctx = terrainLayer.getContext('2d');
@@ -139,7 +141,7 @@ export function createRenderer(canvas) {
   };
 
   function drawTank(t, angle, isActive, theme, time, reduced) {
-    const lx = Math.round(t.x / 2), ly = Math.round(t.y / 2);
+    const lx = Math.round(t.x), ly = Math.round(t.y);
     if (!t.alive) {
       drawWreck(surface, { lx, ly, commander: t.commander });
       if (!reduced && Math.floor(time * 3 + t.x) % 3 === 0) { b.fillStyle = '#555'; b.fillRect(lx - 1, ly - 9 - Math.floor((time * 6) % 4), 2, 2); }
@@ -237,7 +239,7 @@ export function createRenderer(canvas) {
   }
 
   /**
-   * view = { state, theme, settings, reduced, time, effects, preview, aim, labels, diag, hidePreview }
+   * view = { state, theme, settings, reduced, time, effects, preview, ghost, aim, labels, diag, hidePreview }
    */
   function draw(view) {
     resize();
@@ -246,6 +248,7 @@ export function createRenderer(canvas) {
     buildSky(theme, night, state.seed);
     buildTerrain(state, theme, night);
     b.imageSmoothingEnabled = false;
+    b.setTransform(2, 0, 0, 2, 0, 0);
     b.drawImage(skyLayer, 0, 0);
     b.drawImage(terrainLayer, 0, 0);
     drawFires(state, theme, view.time, reduced);
@@ -256,10 +259,12 @@ export function createRenderer(canvas) {
       b.fillRect(Math.round(p.x / 2), Math.round(p.y / 2), 1, 1);
     }
     for (const p of state.projectiles) drawProjectile(p, view.time, reduced);
+    b.setTransform(1, 0, 0, 1, 0, 0);
     state.tanks.forEach((t, i) => {
       const angle = view.aim && i === view.aim.actor ? view.aim.angle : t.angle;
       drawTank(t, angle, i === state.actor && state.phase === 'aiming', theme, view.time, reduced);
     });
+    b.setTransform(2, 0, 0, 2, 0, 0);
     for (const r of effects.rings) {
       const k = 1 - r.life / r.max;
       b.fillStyle = css(rgb(r.color), Math.max(0, r.life / r.max) * 0.9);
@@ -283,6 +288,25 @@ export function createRenderer(canvas) {
     // Crisp overlay
     const px = (x) => x * sx + shakeX, py = (y) => y * sy + shakeY;
     const unit = Math.max(1, sx);
+    if (view.ghost) {
+      const s = Math.max(2, Math.round(2 * unit));
+      ctx.globalAlpha = 0.45;
+      ctx.fillStyle = theme.field.text;
+      for (let i = 0; i < view.ghost.path.length; i += 2) {
+        const p = view.ghost.path[i];
+        ctx.fillRect(px(p.x) - s / 2, py(p.y) - s / 2, s, s);
+      }
+      if (view.ghost.impact) {
+        const x = px(view.ghost.impact.x), y = py(view.ghost.impact.y), r = 5 * unit;
+        ctx.strokeStyle = theme.field.text;
+        ctx.lineWidth = Math.max(1, unit * 1.5);
+        ctx.beginPath();
+        ctx.moveTo(x - r, y - r); ctx.lineTo(x + r, y + r);
+        ctx.moveTo(x + r, y - r); ctx.lineTo(x - r, y + r);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
     if (view.preview && view.preview.length) {
       ctx.fillStyle = theme.field.text;
       ctx.strokeStyle = '#000';
@@ -301,7 +325,7 @@ export function createRenderer(canvas) {
     ctx.textBaseline = 'bottom';
     state.tanks.forEach((t, i) => {
       const label = view.labels?.[i] ?? t.name;
-      const x = px(t.x), y = py(t.y - (t.alive ? Math.max(26, spriteTop(t.commander) * 2 + 8) : 26));
+      const x = px(t.x), y = py(t.y - (t.alive ? Math.max(18, spriteTop(t.commander) + 6) : 16));
       ctx.lineWidth = Math.max(2, unit * 2);
       ctx.strokeStyle = '#000';
       ctx.fillStyle = t.alive ? theme.field.text : '#9a9a9a';
@@ -329,7 +353,30 @@ export function createRenderer(canvas) {
       ctx.fillText(f.text, px(f.x), py(f.y));
     }
     ctx.globalAlpha = 1;
+    for (const bub of effects.speech) drawSpeech(bub, state.tanks[bub.tank], px, py, fontPx, unit);
     if (view.diag) drawDiagnostics(ctx, view.diag, px, py, fontPx, theme);
+  }
+
+  function drawSpeech(bub, t, px, py, fontPx, unit) {
+    if (!t) return;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, bub.life / 0.3, (bub.max - bub.life) / 0.15 + 0.2);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const pad = Math.round(5 * unit), w = ctx.measureText(bub.text).width + pad * 2, h = fontPx + pad;
+    const tipX = px(t.x), tipY = py(t.y - Math.max(18, spriteTop(t.commander) + 6)) - fontPx - Math.max(6, 6 * unit);
+    const x = Math.min(Math.max(tipX, w / 2 + 4), canvas.width - w / 2 - 4), y = tipY - h / 2 - 6 * unit;
+    ctx.fillStyle = '#f4f1e4';
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = Math.max(2, unit * 1.5);
+    ctx.beginPath();
+    ctx.rect(x - w / 2, y - h / 2, w, h);
+    ctx.moveTo(tipX - 5 * unit, y + h / 2); ctx.lineTo(tipX, tipY); ctx.lineTo(tipX + 5 * unit, y + h / 2);
+    ctx.fill(); ctx.stroke();
+    ctx.fillRect(tipX - 4 * unit, y + h / 2 - ctx.lineWidth, 8 * unit, ctx.lineWidth * 1.5);
+    ctx.fillStyle = '#111';
+    ctx.fillText(bub.text, x, y + 1);
+    ctx.restore();
   }
 
   function drawDiagnostics(c, d, px, py, fontPx, theme) {
@@ -362,6 +409,7 @@ export function createRenderer(canvas) {
     const fake = { terrain, seed: 'EDITOR', config: { night: false }, fires: [], vents, projectiles: [], tanks: [] };
     buildSky(theme, false, 'EDITOR');
     buildTerrain(fake, theme, false);
+    b.setTransform(2, 0, 0, 2, 0, 0);
     b.drawImage(skyLayer, 0, 0);
     b.drawImage(terrainLayer, 0, 0);
     drawFires(fake, theme, 0, true);

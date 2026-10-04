@@ -5,6 +5,7 @@ import { DEFENSES, ACTIVE_DEFENSES, DEFENSE_DATA, validateDefenses, getDefense }
 import { emptyInventory, defaultInventory, sanitizeInventory, stockInfo } from '../src/core/weapons.js';
 import { trace } from '../src/core/physics.js';
 import { groundAt } from '../src/core/terrain.js';
+import { TANK_MID } from '../src/core/constants.js';
 import { buy, sell, canBuy } from '../src/game/economy.js';
 import { decideShot, chooseDefense } from '../src/ai/ai.js';
 import { getCommander, commanderPlayer } from '../src/ai/commanders.js';
@@ -16,7 +17,7 @@ const envOf = (s) => ({ terrain: s.terrain, tanks: s.tanks, wind: s.wind, gravit
 /** A harmless shot off the near edge of the map, optionally carrying a defense. */
 function pass(s, use) {
   const t = s.tanks[s.actor];
-  const cmd = fire(s, 'shell', t.x < W / 2 ? 178 : 2, 100);
+  const cmd = fire(s, 'shell', t.x < W / 2 ? 150 : 30, 100);
   if (use) cmd.use = use;
   const res = applyCommand(s, cmd);
   assert.ok(res.ok, res.error);
@@ -78,7 +79,7 @@ test('energy shield absorbs blast damage but not fire', () => {
   const s = flatBattle({ xs: [200, 700, 1200] });
   const t = s.tanks[1];
   t.fx.shield = 60;
-  detonate(s, 'heavy', t.x, t.y - 8, 0); // 68 at the centre
+  detonate(s, 'heavy', t.x, t.y - TANK_MID, 0); // 68 at the centre
   const blast = s.events.filter((e) => e.t === 'damage' && e.to === 1 && e.cause === 'blast');
   assert.deepEqual(blast.map((e) => e.amount), [68 - 60]);
   assert.equal(t.fx.shield, 0);

@@ -9,13 +9,16 @@ export const TICKS_PER_SECOND = 200;
 export const GRAVITY = 320;             // px/s²
 export const WIND_ACCEL = 2.6;          // px/s² per wind unit
 export const SPEED_PER_POWER = 8;       // launch speed (px/s) per power point
-export const BARREL_LENGTH = 25;
-export const BARREL_HEIGHT = 14;
+export const BARREL_LENGTH = 12;
+export const BARREL_HEIGHT = 7;
 export const BEDROCK = H - 14;          // ground can never be lower than this y
 export const SKY_LIMIT = 70;            // ground can never be higher than this y
-export const TANK_HALF_WIDTH = 18;
-export const TANK_HEIGHT = 20;
-export const PAD_HALF_WIDTH = 22;
+// Tanks are drawn one sprite pixel per world unit (20×10 hull), small enough
+// that six tanks leave plenty of open ground between them.
+export const TANK_HALF_WIDTH = 10;
+export const TANK_HEIGHT = 10;
+export const TANK_MID = 5;             // height of a tank's centre above its base, for blast distance
+export const PAD_HALF_WIDTH = 13;
 export const MAX_FLIGHT_TICKS = 12 * TICKS_PER_SECOND;
 export const RESOLVE_HOLD_TICKS = 110;  // pause after impacts before the next turn
 export const MISS_HOLD_TICKS = 60;

@@ -5,7 +5,7 @@ import {
 } from '../src/core/engine.js';
 import { createStepper } from '../src/core/clock.js';
 import { trace } from '../src/core/physics.js';
-import { groundAt } from '../src/core/terrain.js';
+import { groundAt, supportY } from '../src/core/terrain.js';
 import { getWeapon, damageAt } from '../src/core/weapons.js';
 import { BEDROCK, SKY_LIMIT, W, FALL_SAFE_DISTANCE, FALL_DAMAGE_PER_PX } from '../src/core/constants.js';
 import { flatBattle, fire, flatTerrain } from './helpers.js';
@@ -126,7 +126,7 @@ test('tanks settle after deformation and take distance-based fall damage once pe
   const startY = s.tanks[1].y;
   detonate(s, 'burrow', 600, 470, null);
   const t = s.tanks[1];
-  assert.equal(t.y, groundAt(s.terrain, 600) > startY ? Math.min(groundAt(s.terrain, 588), groundAt(s.terrain, 600), groundAt(s.terrain, 612)) : t.y);
+  assert.equal(t.y, groundAt(s.terrain, 600) > startY ? supportY(s.terrain, 600) : t.y);
   const falls = s.events.filter((e) => e.t === 'fall' && e.to === 1);
   assert.equal(falls.length, 1);
   const drop = t.y - startY;
@@ -172,7 +172,7 @@ test('battle completion: victory, defeat, mutual destruction, ceasefire', () => 
   s.tanks.forEach((t) => { t.alive = false; t.hp = 0; });
   assert.equal(evaluateOutcome(s).reason, 'mutualDestruction');
   s = flatBattle({ xs: [200, 600], rules: { maxTurns: 4 } });
-  for (let i = 0; i < 4 && s.phase !== 'battleOver'; i++) { applyCommand(s, fire(s, 'shell', 90, 10)); runUntilIdle(s); }
+  for (let i = 0; i < 4 && s.phase !== 'battleOver'; i++) { applyCommand(s, fire(s, 'shell', 180, 100)); runUntilIdle(s); }
   assert.equal(s.phase, 'battleOver');
   assert.equal(s.result.reason, 'ceasefire');
 });

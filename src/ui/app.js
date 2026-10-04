@@ -20,8 +20,8 @@ import { clamp } from '../core/math.js';
 import { makeSeedCode, normalizeSeedCode, createRng } from '../core/rng.js';
 import { PROFILE_IDS } from '../core/mapgen.js';
 import { WEATHER, NIGHT } from '../core/weather.js';
-import { decideShot, pickBark } from '../ai/ai.js';
-import { COMMANDERS, COMMANDER_IDS, getCommander, DIFFICULTY, commanderPlayer } from '../ai/commanders.js';
+import { decideShot } from '../ai/ai.js';
+import { COMMANDERS, COMMANDER_IDS, getCommander, HUMAN_BARKS, DIFFICULTY, commanderPlayer } from '../ai/commanders.js';
 import { getChassis } from '../core/ratings.js';
 
 import { createMachine } from '../game/machine.js';
@@ -39,6 +39,7 @@ import { unlockFor, isUnlocked, lockedWeapons, withKit, newlyUnlocked } from '..
 
 const LIVE = new Set(['aiming', 'aiThinking', 'projectile', 'resolving', 'handoff']);
 const AI_DELAY_MS = 750;
+const QUIP_CHANCE = 0.3;     // how often a tank says something as it fires
 
 export function startApp() {
   // ── Persistence ─────────────────────────────────────────────────────────
@@ -327,8 +328,6 @@ export function startApp() {
       const { command, diagnostics } = decideShot(s, s.actor);
       session.diag = dev ? diagnostics : null;
       if (dev) console.debug('[ai]', diagnostics);
-      const bark = pickBark(t.commander, 'fire', `${s.seed}|${s.turn}`);
-      logLine({ text: `${t.name} (radio): ${bark}`, tone: 'radio' });
       issue(command);
     }, AI_DELAY_MS / settings.speed);
   }
@@ -353,7 +352,9 @@ export function startApp() {
     const aim = session.aim[s.actor];
     const cmd = { type: 'fire', actor: s.actor, weapon: aim.weapon, angle: aim.angle, power: aim.power };
     if (aim.defense) cmd.use = aim.defense;
+    const shot = shotPath(s, aim);
     if (!issue(cmd)) return;
+    if (shot) (session.lastShot ??= {})[cmd.actor] = shot;
     aim.defense = null;
     audio.play('fire');
   }
@@ -746,6 +747,16 @@ export function startApp() {
   }
 
   let bannerTimer = 0;
+  function noKibitzing() {
+    audio.play('deny');
+    announce('No kibitzing!');
+    if (!session || !LIVE.has(machine.state)) return;
+    showBanner('NO KIBITZING!');
+    const s = session.state;
+    const others = s.tanks.map((t, i) => i).filter((i) => s.tanks[i].alive && i !== s.actor);
+    if (others.length) effects.say(others[Math.floor(Math.random() * others.length)], 'No kibitzing!', 2.2);
+  }
+
   function showBanner(text) {
     const b = $('banner');
     b.textContent = text;
@@ -1011,10 +1022,32 @@ export function startApp() {
     const aim = session.aim[s.actor];
     const special = specialPreview(s, aim);
     if (special) return mode === 'partial' ? special.slice(0, Math.max(3, Math.ceil(special.length / 3))) : special;
+    // Partial traces in still air, so the wind's pull shows up only in the live shot.
+    const wind = mode === 'partial' ? 0 : s.wind;
     const path = [];
-    const r = trace({ terrain: s.terrain, tanks: s.tanks, wind: s.wind, gravity: s.config.rules.gravity, walls: s.config.rules.walls }, s.actor, aim.angle, aim.power, { path, sampleEvery: 10 });
+    const r = trace({ terrain: s.terrain, tanks: s.tanks, wind, gravity: s.config.rules.gravity, walls: s.config.rules.walls }, s.actor, aim.angle, aim.power, { path, sampleEvery: 10 });
     if (r.kind === 'ground' || r.kind === 'tank') path.push({ x: r.x, y: r.y });
     return mode === 'partial' ? path.slice(0, Math.max(3, Math.ceil(path.length / 3))) : path;
+  }
+
+  /** Faint path of the current player's previous shot, for correcting aim without a full preview. */
+  function ghostPath() {
+    if (!session || machine.state !== 'aiming') return null;
+    const s = session.state;
+    let mode = settings.preview;
+    if (s.config.night && mode === 'full') mode = NIGHT.previewCap;
+    return mode === 'full' ? null : session.lastShot?.[s.actor] ?? null;
+  }
+
+  /** The primary flight of a shot as it will actually fly (same trace the engine runs). */
+  function shotPath(s, aim) {
+    const pr = getWeapon(aim.weapon).projectile;
+    if (pr.kind === 'beam' || pr.kind === 'plasma') return null;
+    const path = [];
+    const r = trace({ terrain: s.terrain, tanks: s.tanks, wind: s.wind, gravity: s.config.rules.gravity, walls: s.config.rules.walls }, s.actor, aim.angle, aim.power, { path, sampleEvery: 10 });
+    const impact = r.kind === 'ground' || r.kind === 'tank' ? { x: r.x, y: r.y } : null;
+    if (impact) path.push(impact);
+    return { path, impact };
   }
 
   /** Laser: a straight dotted line to the end of its range. Plasma: the blast ring. */
@@ -1050,6 +1083,17 @@ export function startApp() {
     if (snd === 'explosion') audio.play(snd, Math.min(1.5, (e.radius ?? getWeapon(e.weapon).crater.radius) / 60));
     else if (snd) audio.play(snd);
     if (e.t === 'fire' && state.tanks[e.by].kind !== 'human') audio.play('fire');
+    if (e.t === 'fire' && Math.random() < QUIP_CHANCE) say(state, e.by, 'fire');
+    if (e.t === 'eliminated') say(state, e.to, 'lastWords', 4.5);
+  }
+
+  /** Character chatter: presentation only, so it never touches the deterministic sim. */
+  function say(state, idx, kind, seconds) {
+    const t = state.tanks[idx];
+    const list = (t.kind === 'ai' ? getCommander(t.commander).barks[kind] : null) ?? HUMAN_BARKS[kind];
+    const line = list[Math.floor(Math.random() * list.length)];
+    effects.say(idx, line, seconds);
+    logLine({ text: `${t.name}: ${kind === 'lastWords' ? 'last words: ' : ''}${line}`, tone: 'radio' });
   }
 
   let frameErrors = 0;
@@ -1081,6 +1125,7 @@ export function startApp() {
       renderer.draw({
         state: s, theme: theme(), reduced: reduced(), time: now / 1000, effects,
         preview: previewPath(),
+        ghost: ghostPath(),
         aim: aimActor != null ? { actor: aimActor, angle: session.aim[aimActor].angle } : null,
         largeText: settings.textSize === 'large',
         diag: dev && session.diag && machine.state !== 'aiming' ? session.diag : null,
@@ -1307,6 +1352,7 @@ export function startApp() {
     const lower = key.length === 1 ? key.toLowerCase() : key;
     if (lower === 'm' && !e.ctrlKey && !e.metaKey) { toggleMute(); return; }
     if ((lower === 'h' || key === '?') && !e.ctrlKey && !e.metaKey) { e.preventDefault(); openHelp(); return; }
+    if (lower === 'k' && !e.ctrlKey && !e.metaKey) { noKibitzing(); return; }
 
     if (st === 'replayViewer' && session?.replay) {
       const r = session.replay;

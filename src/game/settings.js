@@ -1,11 +1,11 @@
-// Persistent player settings (version 1).
+// Persistent player settings (version 2).
 
 import { clamp } from '../core/math.js';
 import { THEME_IDS, TANK_COLORS } from './themes.js';
 import { KEYS, loadVersioned, saveVersioned } from './storage.js';
 import { CHASSIS } from '../core/ratings.js';
 
-export const SETTINGS_VERSION = 1;
+export const SETTINGS_VERSION = 2;
 
 export const SETTING_OPTIONS = {
   preview: ['full', 'partial', 'off'],
@@ -19,7 +19,7 @@ export function defaultSettings() {
   return {
     v: SETTINGS_VERSION,
     audio: { master: 0.7, effects: 0.8, music: 0.35, muted: false },
-    preview: 'full',
+    preview: 'partial',
     motion: 'system',
     scanlines: true,
     flicker: false,
@@ -72,6 +72,8 @@ export const SETTINGS_SPEC = {
   migrations: {
     // v0: unversioned prototype shape { muted, volume } → v1.
     0: (old) => ({ audio: { muted: old.muted ?? false, master: old.volume ?? 0.7 } }),
+    // v1 → v2: Full preview was the old default and made aiming trivial; move everyone to Partial once.
+    1: (old) => ({ ...old, preview: old.preview === 'full' ? 'partial' : old.preview }),
   },
 };
 

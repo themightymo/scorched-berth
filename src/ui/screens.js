@@ -413,10 +413,11 @@ export function helpContent() {
       <tr><th scope="row"><kbd>P</kbd> / <kbd>Esc</kbd></th><td>Pause and resume (pause also freezes AI turns)</td></tr>
       <tr><th scope="row"><kbd>H</kbd> / <kbd>?</kbd></th><td>This manual</td></tr>
       <tr><th scope="row"><kbd>M</kbd></th><td>Mute or unmute</td></tr>
+      <tr><th scope="row"><kbd>K</kbd></th><td>Kibitz (not recommended)</td></tr>
       <tr><th scope="row"><kbd>Tab</kbd></th><td>Move between controls; menus also accept arrow keys</td></tr>
     </tbody></table>
     <h3>Wind</h3>
-    <p>Wind pushes every projectile sideways at a steady rate for the whole flight. Its strength is shown as a number, a direction word, and a row of arrows. It shifts a little after every turn, more in a gale. The trajectory preview already accounts for the current wind. Choose Full, Partial, or Off preview in Settings; night limits it to Partial.</p>
+    <p>Wind pushes every projectile sideways at a steady rate for the whole flight. Its strength is shown as a number, a direction word, and a row of arrows. It shifts a little after every turn, more in a gale. Choose the trajectory preview in Settings. <b>Full</b> draws the whole arc, wind included. <b>Partial</b> (the default) draws only the first third, as if the air were still, so you have to judge the wind yourself. <b>Off</b> draws nothing. With Partial or Off, a faint trail and an ✕ mark where your previous shot actually landed, so you can correct. Night limits the preview to Partial.</p>
     <h3>Payloads</h3>
     <div class="table-wrap"><table class="stats-table"><thead><tr><th scope="col">Payload</th><th scope="col">Damage</th><th scope="col">Radius</th><th scope="col">Role</th><th scope="col">Counterplay</th></tr></thead><tbody>
       ${WEAPONS.map((w) => html`<tr><th scope="row">${w.glyph} ${w.name}</th><td>${w.damage.max}${w.projectile.kind === 'cluster' ? ` ×${w.projectile.count}` : ''}</td><td>${w.damage.radius}</td><td>${w.description}${unlockFor(w.id) ? html` <i>Unlock: ${unlockFor(w.id).text}.</i>` : ''}</td><td>${w.counterplay}</td></tr>`)}
@@ -452,7 +453,7 @@ export function settingsContent(s, { inBattle, devHint }) {
       <label class="field check"><input type="checkbox" id="set-muted" ${raw(s.audio.muted ? 'checked' : '')}> <span>Mute all sound</span></label>
     </fieldset>
     <fieldset><legend>Trajectory preview</legend>
-      ${radio('preview', 'full', 'Full arc (easiest)')}${radio('preview', 'partial', 'Partial: first third of the arc')}${radio('preview', 'off', 'Off (hardest)')}
+      ${radio('preview', 'full', 'Full arc with wind (easiest)')}${radio('preview', 'partial', 'Partial: first third, ignoring wind')}${radio('preview', 'off', 'Off (hardest)')}
     </fieldset>
     <fieldset><legend>Motion and effects</legend>
       ${radio('motion', 'system', 'Follow system reduced-motion setting')}${radio('motion', 'reduced', 'Always reduce motion')}${radio('motion', 'full', 'Full motion')}

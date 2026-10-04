@@ -8,7 +8,7 @@ export const groundAt = (terrain, x) => terrain[clamp(Math.round(x), 0, W)];
 
 /** Highest supporting ground under a tank footprint (smallest y). */
 export function supportY(terrain, x) {
-  const span = TANK_HALF_WIDTH - 6;
+  const span = TANK_HALF_WIDTH - 3;
   return Math.min(groundAt(terrain, x - span), groundAt(terrain, x), groundAt(terrain, x + span));
 }
 
