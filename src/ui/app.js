@@ -9,6 +9,7 @@ import { createAudio } from './audio.js';
 import { describe, reasonText } from './log.js';
 import * as S from './screens.js';
 import { editorTemplate, mountEditor } from './editor.js';
+import { setPortraitPalette } from './sprites.js';
 
 import { createBattle, applyCommand, replayBattle, stateDigest, defenseBlocked } from '../core/engine.js';
 import { DEFENSES, ACTIVE_DEFENSES, getDefense } from '../core/defenses.js';
@@ -27,7 +28,7 @@ import { getChassis } from '../core/ratings.js';
 import { createMachine } from '../game/machine.js';
 import { createStore } from '../game/storage.js';
 import { loadSettings, saveSettings, reducedMotion } from '../game/settings.js';
-import { THEMES, TANK_COLORS } from '../game/themes.js';
+import { THEMES, TANK_COLORS, paletteSnapper } from '../game/themes.js';
 import * as T from '../game/tournament.js';
 import { loadRecords, saveRecords, addBattle, defaultRecords } from '../game/records.js';
 import { makeReplay, verifyReplay, loadReplays, saveReplays, addReplay, encodeShare, importReplay } from '../game/replays.js';
@@ -75,7 +76,7 @@ export function startApp() {
   let replayMessage = '';
   let lastFrame = performance.now();
 
-  const theme = () => THEMES[settings.theme] ?? THEMES.console;
+  const theme = () => THEMES[settings.theme] ?? THEMES.tandy;
   const reduced = () => reducedMotion(settings, motionQuery?.matches);
   const profile = () => ({ playerName: settings.playerName, playerColor: settings.playerColor, playerChassis: settings.playerChassis });
   // ?dev (or ?unlockall) opens the whole arsenal for testing; it never changes the saved record.
@@ -88,6 +89,7 @@ export function startApp() {
     const root = document.documentElement;
     for (const [k, v] of Object.entries(theme().ui)) root.style.setProperty(`--${k}`, v);
     root.dataset.theme = settings.theme;
+    setPortraitPalette(theme().id, theme().palette ? paletteSnapper(theme().palette) : null);
     root.classList.toggle('reduced-motion', reduced());
     root.classList.toggle('large-text', settings.textSize === 'large');
     root.classList.toggle('scanlines', settings.scanlines);

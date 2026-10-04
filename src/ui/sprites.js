@@ -167,15 +167,21 @@ export function drawWreck(g, { lx, ly, commander }) {
  * per commander and colour.
  */
 const portraits = new Map();
+let portraitPalette = { id: '', snap: (c) => c };
+/** Snap portrait colours to a theme's palette (`snap` null for full colour). */
+export function setPortraitPalette(id, snap) {
+  portraitPalette = { id: snap ? id : '', snap: snap ?? ((c) => c) };
+}
 export function tankPortrait(commander, color, scale = 4) {
-  const key = `${commander}|${color}|${scale}`;
+  const key = `${commander}|${color}|${scale}|${portraitPalette.id}`;
+  const { snap } = portraitPalette;
   if (portraits.has(key)) return portraits.get(key);
   if (typeof document === 'undefined') return '';
   const w = 34, h = 28;
   const c = document.createElement('canvas');
   c.width = w * scale; c.height = h * scale;
   const ctx = c.getContext('2d');
-  const rect = (x, y, rw, rh, fill) => { ctx.fillStyle = fill; ctx.fillRect(Math.round(x) * scale, Math.round(y) * scale, rw * scale, rh * scale); };
+  const rect = (x, y, rw, rh, fill) => { ctx.fillStyle = snap(fill); ctx.fillRect(Math.round(x) * scale, Math.round(y) * scale, rw * scale, rh * scale); };
   const line = (x0, y0, x1, y1, fill) => {
     const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
     for (let i = 0; i <= n; i++) rect(x0 + ((x1 - x0) * i) / n, y0 + ((y1 - y0) * i) / n, 1, 1, fill);

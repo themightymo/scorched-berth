@@ -244,3 +244,86 @@ html.reduced-motion *, html.reduced-motion *::before, html.reduced-motion *::aft
 .unlock-banner .box-title { color: var(--ok); }
 .tank-portrait, .tank-thumb { image-rendering: pixelated; display: block; background: var(--ink); border: 1px solid var(--line, #2a3242); flex: none; }
 .tank-portrait { margin: 4px 0 8px; max-width: 100%; height: auto; }
+
+/* ── Tandy 16 ────────────────────────────────────────────────────────────
+   1990s DOS look in the Tandy 1000's 16 colours: DOS-blue screens, light
+   cyan double rules, gray beveled buttons, hard black drop shadows. */
+html[data-theme=tandy] {
+  --t-gray: #aaaaaa; --t-dkgray: #555555; --t-white: #ffffff; --t-black: #000000; --t-blue: #0000aa;
+  --t-cyan: #55ffff; --t-yellow: #ffff55; --t-red: #ff5555; --t-magenta: #ff55ff; --t-green: #55ff55;
+  --bevel: var(--t-white) var(--t-dkgray) var(--t-dkgray) var(--t-white);
+  --bevel-in: var(--t-dkgray) var(--t-white) var(--t-white) var(--t-dkgray);
+}
+html[data-theme=tandy] body { font-family: var(--display); font-size: 1.2rem; line-height: 1.35; }
+html[data-theme=tandy] code, html[data-theme=tandy] kbd { font-family: var(--display); font-size: 1em; }
+
+/* Title bar: gray menu strip like a DOS application */
+html[data-theme=tandy] .topbar { background: var(--t-gray); color: var(--t-black); border: 0; margin: 0 -16px 18px; padding: 6px 16px; box-shadow: 0 4px 0 var(--t-black); }
+html[data-theme=tandy] .brand { color: var(--t-red); text-shadow: 2px 2px 0 var(--t-black); font-size: 2.1rem; }
+html[data-theme=tandy] .brand small { color: var(--t-blue); text-shadow: none; font-family: var(--display); font-size: 1rem; }
+html[data-theme=tandy] .brand-mark { color: var(--t-yellow); }
+html[data-theme=tandy] .topbar-status { color: var(--t-black); font-size: 1.05rem; }
+
+/* Buttons: raised gray, pressed in on click */
+html[data-theme=tandy] button {
+  background: var(--t-gray); color: var(--t-black); border: 3px solid; border-color: var(--bevel);
+  box-shadow: 2px 2px 0 var(--t-black); font-family: var(--display); font-size: 1.15rem; line-height: 1.15;
+}
+html[data-theme=tandy] button:hover:not(:disabled) { background: var(--t-cyan); border-color: var(--bevel); }
+html[data-theme=tandy] button:active:not(:disabled) { border-color: var(--bevel-in); box-shadow: none; transform: translate(2px, 2px); }
+html[data-theme=tandy] button.primary { background: var(--t-yellow); color: var(--t-black); border-color: var(--bevel); }
+html[data-theme=tandy] button.primary:hover:not(:disabled) { background: var(--t-white); border-color: var(--bevel); }
+html[data-theme=tandy] button:disabled { opacity: 1; color: var(--t-dkgray); background: var(--t-gray); }
+html[data-theme=tandy] button[aria-pressed=true] { background: var(--t-yellow); border-color: var(--bevel-in); }
+html[data-theme=tandy] .btn-fire { background: var(--t-red); color: var(--t-black); font-size: 2.2rem; }
+html[data-theme=tandy] .btn-fire:hover:not(:disabled) { background: var(--t-yellow); }
+html[data-theme=tandy] .weapon-btn.selected { background: var(--t-yellow); border-color: var(--bevel-in); box-shadow: none; }
+html[data-theme=tandy] .weapon-btn.selected .wkey::before { color: var(--t-red); }
+html[data-theme=tandy] .weapon-btn .wammo, html[data-theme=tandy] .weapon-btn .wkey { color: var(--t-blue); }
+html[data-theme=tandy] button .muted, html[data-theme=tandy] button small { color: var(--t-blue); }
+
+/* Inputs: black wells with yellow text */
+html[data-theme=tandy] select, html[data-theme=tandy] input:not([type=range]):not([type=checkbox]):not([type=radio]), html[data-theme=tandy] textarea {
+  background: var(--t-black); color: var(--t-yellow); border: 3px solid; border-color: var(--bevel-in); font-family: var(--display); font-size: 1.15rem;
+}
+html[data-theme=tandy] .field > span { color: var(--t-cyan); }
+
+/* Windows: blue panes, double cyan rules, gray title strip, black shadow */
+html[data-theme=tandy] .box, html[data-theme=tandy] .overlay-card, html[data-theme=tandy] dialog.dialog { box-shadow: 8px 8px 0 var(--t-black); }
+html[data-theme=tandy] .box-title, html[data-theme=tandy] legend { color: var(--t-yellow); text-shadow: 2px 2px 0 var(--t-black); }
+html[data-theme=tandy] .screen-title { color: var(--t-white); text-shadow: 3px 3px 0 var(--t-magenta); font-size: 3rem; }
+html[data-theme=tandy] .eyebrow { color: var(--t-cyan); font-size: 1rem; }
+html[data-theme=tandy] .lede, html[data-theme=tandy] .tagline { color: var(--t-white); }
+html[data-theme=tandy] .tag { color: var(--t-cyan); border-color: var(--t-cyan); }
+html[data-theme=tandy] .stats-table thead th { color: var(--t-yellow); }
+html[data-theme=tandy] .notice { background: var(--t-black); box-shadow: 4px 4px 0 var(--t-black); }
+
+/* Rainbow logo, in horizontal palette stripes */
+html[data-theme=tandy] .logo {
+  background: linear-gradient(to bottom, var(--t-red) 0 17%, var(--t-yellow) 17% 34%, var(--t-green) 34% 51%, var(--t-cyan) 51% 68%, var(--t-magenta) 68% 85%, var(--t-white) 85%);
+  -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(3px 3px 0 var(--t-black));
+}
+
+/* Battlefield and HUD */
+html[data-theme=tandy] .field-frame { border-color: var(--t-cyan); box-shadow: 8px 8px 0 var(--t-black); background: var(--t-black); }
+html[data-theme=tandy] .turn-line { color: var(--t-yellow); text-shadow: 2px 2px 0 var(--t-black); font-size: 1.9rem; }
+html[data-theme=tandy] .aim-row output { color: var(--t-yellow); }
+html[data-theme=tandy] .aim-row label, html[data-theme=tandy] .keyhint, html[data-theme=tandy] .weapon-detail { color: var(--t-cyan); }
+html[data-theme=tandy] .wind-arrows { color: var(--t-yellow); }
+html[data-theme=tandy] .hpbar { background: var(--t-black); border-color: var(--t-gray); height: 8px; }
+html[data-theme=tandy] .roster li.active { border-color: var(--t-yellow); background: var(--t-black); }
+html[data-theme=tandy] .log { background: var(--t-black); padding: 4px 6px; }
+html[data-theme=tandy] .log li { border-bottom-color: var(--t-dkgray); }
+html[data-theme=tandy] .log-turn { color: var(--t-cyan); }
+html[data-theme=tandy] .banner { color: var(--t-yellow); background: var(--t-blue); border: 3px double var(--t-cyan); box-shadow: 6px 6px 0 var(--t-black); text-shadow: 2px 2px 0 var(--t-black); }
+html[data-theme=tandy] .replay-bar { background: var(--t-gray); color: var(--t-black); border-top-color: var(--t-white); }
+html[data-theme=tandy] .replay-status { color: var(--t-blue); }
+html[data-theme=tandy] .rbar { color: var(--t-green); }
+html[data-theme=tandy] .stars { color: var(--t-yellow); text-shadow: 2px 2px 0 var(--t-black); }
+html[data-theme=tandy] .tank-portrait, html[data-theme=tandy] .tank-thumb { background: var(--t-black); border: 2px solid var(--t-cyan); }
+html[data-theme=tandy] dialog::backdrop, html[data-theme=tandy] .field-overlay.modal { background: rgba(0, 0, 0, 0.55); }
+html[data-theme=tandy] .dialog-body h3 { color: var(--t-yellow); }
+html[data-theme=tandy] .weapon-btn .glyph { background: var(--t-black); padding: 0 3px; min-width: 1.3em; text-align: center; }
+html[data-theme=tandy] .weapon-btn.passive { background: var(--t-gray); color: var(--t-black); border: 3px dashed var(--t-dkgray); }
+html[data-theme=tandy] .logo { font-size: 1.1rem; }
+@media (max-width: 760px) { html[data-theme=tandy] .logo { font-size: 0.6rem; } }

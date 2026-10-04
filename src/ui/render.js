@@ -5,12 +5,14 @@
 // pixel per world unit so they stay small and detailed. The buffer is scaled up
 // with nearest-neighbour sampling. Labels and the trajectory preview are drawn
 // on top at full display resolution so they stay legible.
+// A theme with a `palette` (Tandy 16) has every drawn colour snapped to it.
 
 import { W, H, BEDROCK } from '../core/constants.js';
 import { createRng } from '../core/rng.js';
 import { getWeapon } from '../core/weapons.js';
 import { getCommander } from '../ai/commanders.js';
 import { drawTankSprite, drawWreck, spriteTop } from './sprites.js';
+import { paletteSnapper } from '../game/themes.js';
 
 const LW = W / 2, LH = H / 2;
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
@@ -18,6 +20,15 @@ const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 const rgb = (hex) => { const n = parseInt(hex.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
 const mix = (a, b, t) => [0, 1, 2].map((i) => Math.round(a[i] + (b[i] - a[i]) * t));
 const css = (c, a = 1) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+const same = (c) => c;
+const snappers = new Map();
+const snapperFor = (theme) => {
+  if (!theme.palette) return same;
+  if (!snappers.has(theme.id)) snappers.set(theme.id, paletteSnapper(theme.palette));
+  return snappers.get(theme.id);
+};
+/** Field colours for the time of day: a theme's night set, or the day set dimmed by the renderer. */
+const fieldFor = (theme, night) => (night && theme.field.night ? { ...theme.field, ...theme.field.night } : theme.field);
 
 function makeCanvas(w, h) {
   const c = document.createElement('canvas');
@@ -32,6 +43,7 @@ export function createRenderer(canvas) {
   const terrainLayer = makeCanvas(LW, LH);
   const tctx = terrainLayer.getContext('2d');
   let skyKey = '', skyLayer = null, terrainKey = '';
+  let q = same; // colour snapper for the current theme
 
   function resize() {
     const rect = canvas.getBoundingClientRect();
@@ -46,8 +58,9 @@ export function createRenderer(canvas) {
     skyKey = key;
     skyLayer = makeCanvas(LW, LH);
     const s = skyLayer.getContext('2d');
-    const f = theme.field;
-    const bands = (night ? f.sky.map((c) => mix(rgb(c), [4, 6, 14], 0.72)) : f.sky.map(rgb));
+    const f = fieldFor(theme, night);
+    const dim = night && !theme.field.night;
+    const bands = (dim ? f.sky.map((c) => mix(rgb(c), [4, 6, 14], 0.72)) : f.sky.map(rgb)).map((c) => rgb(q(css(c))));
     const img = s.createImageData(LW, LH);
     const horizon = LH * 0.82;
     for (let y = 0; y < LH; y++) {
@@ -63,18 +76,19 @@ export function createRenderer(canvas) {
     const rng = createRng(`${seed}|sky`);
     if (night) for (let k = 0; k < 140; k++) {
       const x = rng.int(0, LW - 1), y = rng.int(0, Math.floor(LH * 0.55)), o = (y * LW + x) * 4, v = rng.int(150, 255);
-      img.data[o] = v; img.data[o + 1] = v; img.data[o + 2] = Math.min(255, v + 20);
+      const star = rgb(q(css([v, v, Math.min(255, v + 20)])));
+      img.data[o] = star[0]; img.data[o + 1] = star[1]; img.data[o + 2] = star[2];
     }
     s.putImageData(img, 0, 0);
     // Sun or moon
     const sx = rng.int(LW * 0.55, LW * 0.85), sy = rng.int(28, 60);
-    s.fillStyle = night ? '#d9dcef' : f.sun;
+    s.fillStyle = q(dim ? '#d9dcef' : f.sun);
     s.beginPath(); s.arc(sx, sy, night ? 9 : 16, 0, Math.PI * 2); s.fill();
     if (night) { s.fillStyle = css(bands[0]); s.beginPath(); s.arc(sx + 4, sy - 2, 8, 0, Math.PI * 2); s.fill(); }
     // Two layers of distant hills
     f.hills.forEach((hex, layer) => {
-      const col = night ? mix(rgb(hex), [0, 0, 0], 0.5) : rgb(hex);
-      s.fillStyle = css(col);
+      const col = dim ? mix(rgb(hex), [0, 0, 0], 0.5) : rgb(hex);
+      s.fillStyle = q(css(col));
       const base = LH * (0.55 + layer * 0.08), amp = 26 - layer * 6;
       const pts = Array.from({ length: 12 }, () => rng.range(-1, 1));
       s.beginPath(); s.moveTo(0, LH);
@@ -94,9 +108,10 @@ export function createRenderer(canvas) {
     const key = `${theme.id}|${night}|${sum}|${t.length}|${state.seed}`;
     if (key === terrainKey) return;
     terrainKey = key;
-    const f = theme.field;
-    const dim = night ? 0.55 : 0;
-    const g1 = mix(rgb(f.ground), [0, 0, 0], dim), g2 = mix(rgb(f.ground2), [0, 0, 0], dim), crust = mix(rgb(f.crust), [0, 0, 0], dim * 0.6), bed = mix(rgb(f.bedrock), [0, 0, 0], dim);
+    const f = fieldFor(theme, night);
+    const dim = night && !theme.field.night ? 0.55 : 0;
+    const shade = (hex, k) => rgb(q(css(mix(rgb(hex), [0, 0, 0], k))));
+    const g1 = shade(f.ground, dim), g2 = shade(f.ground2, dim), crust = shade(f.crust, dim * 0.6), bed = shade(f.bedrock, dim);
     const img = tctx.createImageData(LW, LH);
     const bedrockY = BEDROCK / 2;
     for (let x = 0; x < LW; x++) {
@@ -122,7 +137,7 @@ export function createRenderer(canvas) {
   }
 
   function pixelLine(x0, y0, x1, y1, color) {
-    b.fillStyle = color;
+    b.fillStyle = q(color);
     x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
     const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
     let err = dx + dy;
@@ -136,7 +151,7 @@ export function createRenderer(canvas) {
   }
 
   const surface = {
-    rect(x, y, w, h, color) { b.fillStyle = color; b.fillRect(x, y, w, h); },
+    rect(x, y, w, h, color) { b.fillStyle = q(color); b.fillRect(x, y, w, h); },
     line: (x0, y0, x1, y1, color) => pixelLine(x0, y0, x1, y1, color),
   };
 
@@ -144,7 +159,7 @@ export function createRenderer(canvas) {
     const lx = Math.round(t.x), ly = Math.round(t.y);
     if (!t.alive) {
       drawWreck(surface, { lx, ly, commander: t.commander });
-      if (!reduced && Math.floor(time * 3 + t.x) % 3 === 0) { b.fillStyle = '#555'; b.fillRect(lx - 1, ly - 9 - Math.floor((time * 6) % 4), 2, 2); }
+      if (!reduced && Math.floor(time * 3 + t.x) % 3 === 0) { b.fillStyle = q('#555'); b.fillRect(lx - 1, ly - 9 - Math.floor((time * 6) % 4), 2, 2); }
       return;
     }
     drawTankSprite(surface, { lx, ly, color: t.color, angle, commander: t.commander });
@@ -157,7 +172,7 @@ export function createRenderer(canvas) {
 
   /** Dotted circle in buffer pixels. */
   function dotRing(cx, cy, r, color, dots, phase) {
-    b.fillStyle = color;
+    b.fillStyle = q(color);
     for (let k = 0; k < dots; k++) {
       const a = phase + (k / dots) * Math.PI * 2;
       b.fillRect(Math.round(cx + Math.cos(a) * r), Math.round(cy + Math.sin(a) * r), 1, 1);
@@ -174,15 +189,15 @@ export function createRenderer(canvas) {
       dotRing(lx, ly - 5, 16, css(rgb('#c9a2ff'), 0.4), 12, -spin * 1.5 + 0.13);
     }
     if (fx.anchor > 0) {
-      b.fillStyle = '#a8b4c4';
+      b.fillStyle = q('#a8b4c4');
       for (const k of [-7, 0, 7]) b.fillRect(lx + k, ly + 1, 1, 3);
     }
     if (fx.fireproof > 0 && (reduced || Math.floor(time * 3) % 2 === 0)) {
-      b.fillStyle = '#bff4ff';
+      b.fillStyle = q('#bff4ff');
       b.fillRect(lx - 9, ly - 10, 1, 1); b.fillRect(lx + 9, ly - 9, 1, 1); b.fillRect(lx, ly - 12, 1, 1);
     }
     if (t.falling?.chute) {
-      b.fillStyle = '#f6e7b8';
+      b.fillStyle = q('#f6e7b8');
       b.fillRect(lx - 6, ly - 22, 13, 1);
       b.fillRect(lx - 8, ly - 21, 2, 1); b.fillRect(lx + 7, ly - 21, 2, 1);
       pixelLine(lx - 8, ly - 20, lx - 3, ly - 8, 'rgba(246,231,184,0.6)');
@@ -193,7 +208,7 @@ export function createRenderer(canvas) {
   function drawProjectile(p, time, reduced) {
     const w = getWeapon(p.weapon);
     const x = Math.round(p.x / 2), y = Math.round(p.y / 2);
-    const color = p.hue != null && w.presentation.palette ? w.presentation.palette[p.hue % w.presentation.palette.length] : w.presentation.color;
+    const color = q(p.hue != null && w.presentation.palette ? w.presentation.palette[p.hue % w.presentation.palette.length] : w.presentation.color);
     if (p.kind === 'plasma') {
       // Charge-up: rings closing in on the firer before the discharge.
       const k = Math.min(1, p.age / Math.max(1, p.charge));
@@ -217,7 +232,7 @@ export function createRenderer(canvas) {
   }
 
   function drawFires(state, theme, time, reduced) {
-    const [c1, c2, c3] = theme.field.fire;
+    const [c1, c2, c3] = theme.field.fire.map(q);
     for (const f of state.fires) {
       for (let x = Math.floor(f.x0 / 2); x <= Math.ceil(f.x1 / 2); x++) {
         const top = Math.round(state.terrain[Math.min(W, x * 2)] / 2);
@@ -233,7 +248,7 @@ export function createRenderer(canvas) {
         const top = Math.round(state.terrain[Math.min(W, x * 2)] / 2);
         b.fillStyle = theme.field.vent;
         b.fillRect(x, top, 1, 2);
-        if (!reduced && ((x + Math.floor(time * 4)) % 6 === 0)) { b.fillStyle = 'rgba(220,255,250,0.55)'; b.fillRect(x, top - 3 - Math.floor((time * 5 + x) % 4), 1, 1); }
+        if (!reduced && ((x + Math.floor(time * 4)) % 6 === 0)) { b.fillStyle = theme.palette ? q('#dcfffa') : 'rgba(220,255,250,0.55)'; b.fillRect(x, top - 3 - Math.floor((time * 5 + x) % 4), 1, 1); }
       }
     }
   }
@@ -245,6 +260,7 @@ export function createRenderer(canvas) {
     resize();
     const { state, theme, reduced, effects } = view;
     const night = !!state.config.night;
+    q = snapperFor(theme);
     buildSky(theme, night, state.seed);
     buildTerrain(state, theme, night);
     b.imageSmoothingEnabled = false;
@@ -255,7 +271,7 @@ export function createRenderer(canvas) {
 
     // Trails, projectiles, particles (low-res)
     for (const p of effects.trail) {
-      b.fillStyle = css(rgb(p.color), Math.max(0, p.life));
+      b.fillStyle = css(rgb(q(p.color)), Math.max(0, p.life));
       b.fillRect(Math.round(p.x / 2), Math.round(p.y / 2), 1, 1);
     }
     for (const p of state.projectiles) drawProjectile(p, view.time, reduced);
@@ -267,11 +283,11 @@ export function createRenderer(canvas) {
     b.setTransform(2, 0, 0, 2, 0, 0);
     for (const r of effects.rings) {
       const k = 1 - r.life / r.max;
-      b.fillStyle = css(rgb(r.color), Math.max(0, r.life / r.max) * 0.9);
+      b.fillStyle = css(rgb(q(r.color)), Math.max(0, r.life / r.max) * 0.9);
       b.beginPath(); b.arc(r.x / 2, r.y / 2, Math.max(1, (r.radius / 2) * (0.35 + 0.65 * k)), 0, Math.PI * 2); b.fill();
     }
     for (const p of effects.particles) {
-      b.fillStyle = css(rgb(p.color), Math.max(0, Math.min(1, p.life / p.max)));
+      b.fillStyle = css(rgb(q(p.color)), Math.max(0, Math.min(1, p.life / p.max)));
       b.fillRect(Math.round(p.x / 2), Math.round(p.y / 2), p.size, p.size);
     }
 
@@ -283,7 +299,7 @@ export function createRenderer(canvas) {
     const sx = canvas.width / W, sy = canvas.height / H;
     const shakeX = effects.shake ? (effects.shakeX ?? 0) * sx : 0, shakeY = effects.shake ? (effects.shakeY ?? 0) * sy : 0;
     ctx.drawImage(buf, shakeX, shakeY, canvas.width, canvas.height);
-    if (effects.flash > 0) { ctx.fillStyle = `rgba(255,240,200,${effects.flash})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+    if (effects.flash > 0) { ctx.fillStyle = theme.palette ? `rgba(255,255,255,${effects.flash})` : `rgba(255,240,200,${effects.flash})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
 
     // Crisp overlay
     const px = (x) => x * sx + shakeX, py = (y) => y * sy + shakeY;
@@ -328,7 +344,7 @@ export function createRenderer(canvas) {
       const x = px(t.x), y = py(t.y - (t.alive ? Math.max(18, spriteTop(t.commander) + 6) : 16));
       ctx.lineWidth = Math.max(2, unit * 2);
       ctx.strokeStyle = '#000';
-      ctx.fillStyle = t.alive ? theme.field.text : '#9a9a9a';
+      ctx.fillStyle = t.alive ? theme.field.text : q('#9a9a9a');
       const text = t.alive ? `${label} ${t.hp}` : `${label} ✕`;
       ctx.strokeText(text, x, y);
       ctx.fillText(text, x, y);
@@ -336,7 +352,7 @@ export function createRenderer(canvas) {
         const bw = 40 * sx, bh = Math.max(3, 3 * sy);
         ctx.fillStyle = '#000';
         ctx.fillRect(x - bw / 2 - 1, y + 1, bw + 2, bh + 2);
-        ctx.fillStyle = t.color;
+        ctx.fillStyle = q(t.color);
         ctx.fillRect(x - bw / 2, y + 2, (bw * t.hp) / t.maxHp, bh);
       }
       if (i === state.actor && state.phase !== 'battleOver' && t.alive) {
@@ -348,7 +364,7 @@ export function createRenderer(canvas) {
     for (const f of effects.floaters) {
       ctx.globalAlpha = Math.max(0, Math.min(1, f.life / f.max * 1.5));
       ctx.strokeStyle = '#000';
-      ctx.fillStyle = f.color;
+      ctx.fillStyle = q(f.color);
       ctx.strokeText(f.text, px(f.x), py(f.y));
       ctx.fillText(f.text, px(f.x), py(f.y));
     }
@@ -366,7 +382,7 @@ export function createRenderer(canvas) {
     const pad = Math.round(5 * unit), w = ctx.measureText(bub.text).width + pad * 2, h = fontPx + pad;
     const tipX = px(t.x), tipY = py(t.y - Math.max(18, spriteTop(t.commander) + 6)) - fontPx - Math.max(6, 6 * unit);
     const x = Math.min(Math.max(tipX, w / 2 + 4), canvas.width - w / 2 - 4), y = tipY - h / 2 - 6 * unit;
-    ctx.fillStyle = '#f4f1e4';
+    ctx.fillStyle = q('#f4f1e4');
     ctx.strokeStyle = '#000';
     ctx.lineWidth = Math.max(2, unit * 1.5);
     ctx.beginPath();
@@ -374,7 +390,7 @@ export function createRenderer(canvas) {
     ctx.moveTo(tipX - 5 * unit, y + h / 2); ctx.lineTo(tipX, tipY); ctx.lineTo(tipX + 5 * unit, y + h / 2);
     ctx.fill(); ctx.stroke();
     ctx.fillRect(tipX - 4 * unit, y + h / 2 - ctx.lineWidth, 8 * unit, ctx.lineWidth * 1.5);
-    ctx.fillStyle = '#111';
+    ctx.fillStyle = q('#111');
     ctx.fillText(bub.text, x, y + 1);
     ctx.restore();
   }
@@ -407,6 +423,7 @@ export function createRenderer(canvas) {
   function drawEditor({ terrain, spawns, vents, theme, cursor, brush, problems }) {
     resize();
     const fake = { terrain, seed: 'EDITOR', config: { night: false }, fires: [], vents, projectiles: [], tanks: [] };
+    q = snapperFor(theme);
     buildSky(theme, false, 'EDITOR');
     buildTerrain(fake, theme, false);
     b.setTransform(2, 0, 0, 2, 0, 0);

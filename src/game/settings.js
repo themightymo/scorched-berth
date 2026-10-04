@@ -1,11 +1,11 @@
-// Persistent player settings (version 2).
+// Persistent player settings (version 3).
 
 import { clamp } from '../core/math.js';
 import { THEME_IDS, TANK_COLORS } from './themes.js';
 import { KEYS, loadVersioned, saveVersioned } from './storage.js';
 import { CHASSIS } from '../core/ratings.js';
 
-export const SETTINGS_VERSION = 2;
+export const SETTINGS_VERSION = 3;
 
 export const SETTING_OPTIONS = {
   preview: ['full', 'partial', 'off'],
@@ -27,7 +27,7 @@ export function defaultSettings() {
     flashes: true,
     particles: 'full',
     speed: 1,
-    theme: 'console',
+    theme: 'tandy',
     textSize: 'normal',
     playerName: 'Commander',
     playerColor: TANK_COLORS[0].hex,
@@ -74,6 +74,8 @@ export const SETTINGS_SPEC = {
     0: (old) => ({ audio: { muted: old.muted ?? false, master: old.volume ?? 0.7 } }),
     // v1 → v2: Full preview was the old default and made aiming trivial; move everyone to Partial once.
     1: (old) => ({ ...old, preview: old.preview === 'full' ? 'partial' : old.preview }),
+    // v2 → v3: Tandy 16 replaced Command Console as the default look; move console players over once.
+    2: (old) => ({ ...old, theme: !old.theme || old.theme === 'console' ? 'tandy' : old.theme }),
   },
 };
 

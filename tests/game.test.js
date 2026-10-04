@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createMachine, TRANSITIONS } from '../src/game/machine.js';
 import { createStore, memoryBackend, KEYS } from '../src/game/storage.js';
 import { loadSettings, saveSettings, defaultSettings, sanitizeSettings, reducedMotion } from '../src/game/settings.js';
-import { THEMES, validateTheme, TANK_COLORS, tankColorReadable } from '../src/game/themes.js';
+import { THEMES, validateTheme, TANK_COLORS, tankColorReadable, TANDY_PALETTE, paletteSnapper } from '../src/game/themes.js';
 import { buy, sell, canBuy, battleRewards, ECONOMY } from '../src/game/economy.js';
 import * as T from '../src/game/tournament.js';
 import { loadRecords, saveRecords, addBattle, defaultRecords } from '../src/game/records.js';
@@ -74,12 +74,17 @@ test('settings persist and recover from missing, corrupt, future, and legacy dat
   s.backend.setItem(KEYS.settings, JSON.stringify({ ...defaultSettings(), v: 1, preview: 'off' }));
   assert.equal(loadSettings(s).data.preview, 'off', 'an Off choice is kept');
 
+  s.backend.setItem(KEYS.settings, JSON.stringify({ ...defaultSettings(), v: 2, theme: 'console' }));
+  assert.equal(loadSettings(s).data.theme, 'tandy', 'the old Console default moves to Tandy 16 once');
+  s.backend.setItem(KEYS.settings, JSON.stringify({ ...defaultSettings(), v: 2, theme: 'contrast' }));
+  assert.equal(loadSettings(s).data.theme, 'contrast', 'an accessibility theme choice is kept');
+
   const junk = sanitizeSettings({ preview: 'x', speed: 9, audio: { master: 7 }, playerName: '<script>' , theme: 'nope' });
   assert.equal(junk.preview, 'partial');
   assert.equal(junk.speed, 1);
   assert.equal(junk.audio.master, 1);
   assert.equal(junk.playerName, 'script');
-  assert.equal(junk.theme, 'console');
+  assert.equal(junk.theme, 'tandy');
   assert.equal(reducedMotion({ motion: 'system' }, true), true);
   assert.equal(reducedMotion({ motion: 'full' }, true), false);
 });
@@ -95,6 +100,15 @@ test('themes and selectable tank colours meet contrast minimums', () => {
     assert.deepEqual(validateTheme(theme), []);
     for (const c of TANK_COLORS) assert.ok(tankColorReadable(c.hex, theme), `${c.name} on ${theme.id}`);
   }
+});
+
+test('the Tandy palette snapper maps any colour onto the 16 colours', () => {
+  const snap = paletteSnapper(TANDY_PALETTE);
+  assert.equal(snap('#ffcf6b'), '#ffff55');
+  assert.equal(snap('#fff'), '#ffffff');
+  assert.equal(snap('rgba(10, 8, 12, 0.5)'), '#000000');
+  for (const hex of TANDY_PALETTE) assert.equal(snap(hex), hex);
+  for (const c of TANK_COLORS) assert.ok(TANDY_PALETTE.includes(c.hex), `${c.name} is a Tandy colour`);
 });
 
 test('armory purchases never go negative or exceed caps', () => {

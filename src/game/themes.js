@@ -15,8 +15,58 @@ export function contrast(a, b) {
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 }
 
+/** The 16-colour palette of the Tandy 1000 (and CGA/EGA text mode). */
+export const TANDY_PALETTE = [
+  '#000000', '#0000aa', '#00aa00', '#00aaaa', '#aa0000', '#aa00aa', '#aa5500', '#aaaaaa',
+  '#555555', '#5555ff', '#55ff55', '#55ffff', '#ff5555', '#ff55ff', '#ffff55', '#ffffff',
+];
+
+const parseColor = (c) => {
+  if (c[0] === '#') {
+    const h = c.length === 4 ? c.slice(1).replace(/./g, '$&$&') : c.slice(1, 7);
+    const n = parseInt(h, 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  const m = c.match(/[\d.]+/g);
+  return m ? m.slice(0, 3).map(Number) : [0, 0, 0];
+};
+
+/**
+ * A function that snaps any CSS colour ('#rgb', '#rrggbb', 'rgb()', 'rgba()')
+ * to the nearest palette entry, cached per input string. Alpha is dropped.
+ */
+export function paletteSnapper(palette) {
+  const entries = palette.map((hex) => [hex, parseColor(hex)]);
+  const cache = new Map();
+  return (color) => {
+    let out = cache.get(color);
+    if (out) return out;
+    const [r, g, b] = parseColor(color);
+    let best = Infinity;
+    for (const [hex, [pr, pg, pb]] of entries) {
+      // Weighted distance: the eye is most sensitive to green, least to blue.
+      const d = 3 * (r - pr) ** 2 + 4 * (g - pg) ** 2 + 2 * (b - pb) ** 2;
+      if (d < best) { best = d; out = hex; }
+    }
+    cache.set(color, out);
+    return out;
+  };
+}
+
 // ui: CSS tokens. field: battlefield palette used by the renderer.
+// palette (optional): every colour the renderer draws is snapped to it.
+// field.night (optional): replaces field colours at night instead of dimming them.
 export const THEMES = {
+  tandy: {
+    id: 'tandy', name: 'Tandy 16', description: 'Bright 16-colour DOS look: blue screens, beveled buttons, dithered skies.',
+    palette: TANDY_PALETTE,
+    ui: { bg: '#0000aa', panel: '#0000aa', panel2: '#000000', line: '#55ffff', text: '#ffffff', muted: '#aaaaaa', accent: '#ffff55', warn: '#ffff55', danger: '#ff5555', ok: '#55ff55', focus: '#ff55ff', ink: '#000000' },
+    field: {
+      sky: ['#0000aa', '#0000aa', '#0000aa', '#5555ff', '#ff55ff', '#ffff55'], sun: '#ffff55', hills: ['#aa00aa', '#00aaaa'],
+      ground: '#aa5500', ground2: '#aa0000', crust: '#55ff55', bedrock: '#555555', fire: ['#ffff55', '#ff5555', '#aa0000'], vent: '#55ffff', text: '#ffffff', shadow: '#000000',
+      night: { sky: ['#000000', '#000000', '#000000', '#0000aa', '#0000aa', '#5555ff'], sun: '#ffffff', hills: ['#555555', '#0000aa'], ground: '#aa5500', ground2: '#555555', crust: '#00aa00', bedrock: '#000000' },
+    },
+  },
   console: {
     id: 'console', name: 'Command Console', description: 'Dark navy console with amber and cyan accents.',
     ui: { bg: '#07090f', panel: '#0e1424', panel2: '#151e33', line: '#34466e', text: '#dfe7f2', muted: '#9aa8c0', accent: '#5fe0ee', warn: '#ffc857', danger: '#ff7b6b', ok: '#86e88a', focus: '#ffe066', ink: '#07090f' },
@@ -37,14 +87,14 @@ export const THEME_IDS = Object.keys(THEMES);
 
 /** Tank colours a player may choose; each must read against every sky. */
 export const TANK_COLORS = [
-  { id: 'lime', name: 'Lime', hex: '#9dff6a' },
-  { id: 'cyan', name: 'Cyan', hex: '#5fe0ee' },
-  { id: 'amber', name: 'Amber', hex: '#ffc857' },
-  { id: 'rose', name: 'Rose', hex: '#ff8fb1' },
-  { id: 'violet', name: 'Violet', hex: '#c9a2ff' },
-  { id: 'white', name: 'White', hex: '#f4f4f4' },
-  { id: 'sky', name: 'Sky', hex: '#8fb8ff' },
-  { id: 'orange', name: 'Orange', hex: '#ffa25c' },
+  { id: 'lime', name: 'Lime', hex: '#55ff55' },
+  { id: 'cyan', name: 'Cyan', hex: '#55ffff' },
+  { id: 'yellow', name: 'Yellow', hex: '#ffff55' },
+  { id: 'red', name: 'Red', hex: '#ff5555' },
+  { id: 'magenta', name: 'Magenta', hex: '#ff55ff' },
+  { id: 'white', name: 'White', hex: '#ffffff' },
+  { id: 'silver', name: 'Silver', hex: '#aaaaaa' },
+  { id: 'teal', name: 'Teal', hex: '#00aaaa' },
 ];
 
 export const MIN_TEXT_CONTRAST = 4.5;
