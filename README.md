@@ -16,6 +16,8 @@ npm run build:single  # the whole game in one file: standalone/scorched-berth.ht
 
 `standalone/scorched-berth.html` is the complete game in one self-contained HTML file: the bundled script and stylesheet are inlined. Double-click it to play from disk, email it, or drop it on any static host. Only the two fonts load from Google Fonts, and the game falls back to system monospace fonts when offline.
 
+It is published to GitHub Pages at https://themightymo.github.io/scorched-berth/ by `.github/workflows/pages.yml` whenever a push to `main` changes it.
+
 It is rebuilt automatically. `npm install` points git at the versioned hooks in `.githooks/`, and the pre-commit hook rebuilds the file and adds it to any commit that touches the app (`src/`, `index.html`, `style.css`, `main.js`, `package.json`). Every push therefore carries a current copy. To skip it once, run `SKIP_SINGLE_BUILD=1 git commit …`. If you cloned without running `npm install`, enable the hook with `git config core.hooksPath .githooks`.
 
 ## Verify
