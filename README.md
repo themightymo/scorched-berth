@@ -2,6 +2,17 @@
 
 A turn-based browser artillery game in the spirit of 1990s DOS shareware. Read the battlefield, choose a payload, set angle and power, fire, and adapt to the ground you leave behind. Built with vanilla JavaScript, Canvas, CSS, and Vite. There are no runtime dependencies, and nothing needs a server.
 
+![A tournament battle: aiming at Lincoln with the trajectory preview, payload picker, and wind readout](docs/screenshots/battle.png)
+
+## Screenshots
+
+| | |
+| --- | --- |
+| ![Title screen with the main menu and service record](docs/screenshots/title.png) | ![Mission briefing listing terrain, weather, opposition, and arsenal](docs/screenshots/briefing.png) |
+| Title screen and service record | Mission briefing before a tournament round |
+| ![Commander dossiers with tank sprites and stat ratings](docs/screenshots/commanders.png) | ![Map editor with sculpted terrain and four spawn points](docs/screenshots/map-editor.png) |
+| Commander dossiers | Map editor |
+
 ## Run
 
 ```sh
