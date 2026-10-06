@@ -39,6 +39,7 @@ import { battleRewards, buy, sell } from '../game/economy.js';
 import { unlockFor, isUnlocked, lockedWeapons, withKit, newlyUnlocked } from '../game/unlocks.js';
 
 const LIVE = new Set(['aiming', 'aiThinking', 'projectile', 'resolving', 'handoff']);
+const PLAN_AHEAD = new Set(['aiThinking', 'projectile', 'resolving']); // a lone human may adjust aim during these
 const AI_DELAY_MS = 750;
 const QUIP_CHANCE = 0.3;     // how often a tank says something as it fires
 const NUDGE_DELAY_MS = 380;   // hold a nudge button this long before it repeats
@@ -910,6 +911,8 @@ export function startApp() {
     const st = machine.state;
     const humanTurn = st === 'aiming';
     const aim = session.aim[s.actor];
+    const owner = aimOwner();
+    const planning = owner != null && !humanTurn;
     const replay = !!session.replay;
     let line1, line2;
     if (replay) { line1 = 'REPLAY'; line2 = `${t.name} · turn ${s.turn}`; }
@@ -917,7 +920,7 @@ export function startApp() {
     else if (st === 'paused') { line1 = 'PAUSED'; line2 = touch() ? 'Tap Resume to continue.' : 'Press P to resume.'; }
     else if (st === 'handoff') { line1 = `PASS TO ${t.name.toUpperCase()}`; line2 = 'Waiting for the next player.'; }
     else if (humanTurn) { line1 = `▶ YOUR TURN — ${t.name}`; line2 = touch() ? 'Drag on the battlefield to aim, choose a payload, then FIRE.' : 'Set angle and power, choose a payload, then FIRE.'; }
-    else if (st === 'aiThinking') { line1 = `${t.name.toUpperCase()} AIMING`; line2 = `${getCommander(t.commander).title} · ${DIFFICULTY[t.difficulty].name}. Hold position.`; }
+    else if (st === 'aiThinking') { line1 = `${t.name.toUpperCase()} AIMING`; line2 = `${getCommander(t.commander).title} · ${DIFFICULTY[t.difficulty].name}.${planning ? ' Line up your next shot while you wait.' : ' Hold position.'}`; }
     else { line1 = 'SHOT IN FLIGHT'; line2 = `${t.name} fired. Watch the impact.`; }
     const wt = windText(s.wind);
     const weather = WEATHER[s.config.weather];
@@ -928,11 +931,13 @@ export function startApp() {
     // Aim controls reflect the active human only; hidden during hand-off.
     const showAim = humanTurn && aim;
     const shownAim = showAim ? aim : { angle: t.angle, power: t.power, weapon: t.weapon };
+    // While planning ahead, the dials show the human's next shot, not the tank in play.
+    const dial = planning ? session.aim[owner] : shownAim;
     const hideNumbers = st === 'handoff';
-    $('in-angle').value = shownAim.angle; $('out-angle').value = hideNumbers ? '—' : `${shownAim.angle}°`;
-    $('in-power').value = shownAim.power; $('out-power').value = hideNumbers ? '—' : `${shownAim.power}`;
-    for (const id of ['in-angle', 'in-power']) $(id).disabled = !humanTurn;
-    document.querySelectorAll('[data-nudge]').forEach((b) => { b.disabled = !humanTurn; });
+    $('in-angle').value = dial.angle; $('out-angle').value = hideNumbers ? '—' : `${dial.angle}°`;
+    $('in-power').value = dial.power; $('out-power').value = hideNumbers ? '—' : `${dial.power}`;
+    for (const id of ['in-angle', 'in-power']) $(id).disabled = owner == null;
+    document.querySelectorAll('[data-nudge]').forEach((b) => { b.disabled = owner == null; });
     $('btn-fire').disabled = !humanTurn;
     const inv = t.inventory;
     // Only the active human sees ammunition counts; opponents' arsenals stay private.
@@ -982,12 +987,32 @@ export function startApp() {
     }).join('')}</ul>`;
   }
 
-  function setAim(patch) {
-    if (machine.state !== 'aiming' || !session) return;
+  /**
+   * The tank whose angle and power the controls edit right now: the actor on a
+   * human turn or, in a battle with a single human, that human lining up the
+   * next shot while the computer aims and fires. Null when no one may aim.
+   */
+  function aimOwner() {
+    if (!session || session.replay) return null;
     const s = session.state;
-    const aim = session.aim[s.actor];
+    if (machine.state === 'aiming') return s.actor;
+    if (session.humans.length !== 1 || !PLAN_AHEAD.has(machine.state) || s.phase === 'battleOver') return null;
+    const i = session.humans[0];
+    const t = s.tanks[i];
+    if (!t.alive) return null;
+    session.aim[i] ??= { angle: t.angle, power: t.power, weapon: 'shell' };
+    return i;
+  }
+
+  function setAim(patch) {
+    const owner = aimOwner();
+    if (owner == null) return;
+    const s = session.state;
+    const aim = session.aim[owner];
     if (patch.angle != null) aim.angle = clamp(Math.round(patch.angle), ANGLE_MIN, ANGLE_MAX);
     if (patch.power != null) aim.power = clamp(Math.round(patch.power), POWER_MIN, POWER_MAX);
+    // Payload and defense are chosen on your own turn only.
+    if (machine.state !== 'aiming') { updateHud(); return; }
     if (patch.defense !== undefined) {
       const id = patch.defense;
       const why = id && defenseBlocked(s.tanks[s.actor], id);
@@ -1128,7 +1153,7 @@ export function startApp() {
       effects.consume(s, settings, reduced(), { event: onEngineEvent });
       effects.update(paused ? 0 : dt, s, reduced());
       if ((machine.state === 'projectile' || machine.state === 'resolving' || session.replay) && Math.floor(now / 250) !== session.hudTick) { session.hudTick = Math.floor(now / 250); updateHud(); }
-      const aimActor = machine.state === 'aiming' ? s.actor : null;
+      const aimActor = aimOwner();
       renderer.draw({
         state: s, theme: theme(), reduced: reduced(), time: now / 1000, effects,
         preview: previewPath(),
@@ -1324,8 +1349,8 @@ export function startApp() {
   });
   function nudge(button, step) {
     const [k, d] = button.dataset.nudge.split(':');
-    const aim = session?.aim[session.state.actor];
-    if (aim) setAim({ [k]: aim[k] + Number(d) * step });
+    const owner = aimOwner();
+    if (owner != null) setAim({ [k]: session.aim[owner][k] + Number(d) * step });
   }
 
   // Hold a nudge button to keep adjusting, speeding up the longer it is held.
@@ -1354,8 +1379,9 @@ export function startApp() {
   // farther it is from the tank the more power. Pointer capture keeps the drag
   // going when a finger leaves the canvas, so the whole screen is usable range.
   function aimAt(e) {
-    const s = session.state;
-    const t = s.tanks[s.actor];
+    const owner = aimOwner();
+    if (owner == null) return;
+    const t = session.state.tanks[owner];
     const r = $('field').getBoundingClientRect();
     const dx = ((e.clientX - r.left) / r.width) * W - t.x;
     const dy = (t.y - BARREL_HEIGHT) - ((e.clientY - r.top) / r.height) * H;
@@ -1367,7 +1393,7 @@ export function startApp() {
     setAim({ angle, power: POWER_MIN + (dist / fullPower) * (POWER_MAX - POWER_MIN) });
   }
   $('field').addEventListener('pointerdown', (e) => {
-    if (machine.state !== 'aiming' || !session || session.replay || e.button > 0) return;
+    if (aimOwner() == null || e.button > 0) return;
     e.preventDefault();
     audio.unlock();
     drag = { id: e.pointerId };
@@ -1376,7 +1402,7 @@ export function startApp() {
   });
   $('field').addEventListener('pointermove', (e) => {
     if (!drag || e.pointerId !== drag.id) return;
-    if (machine.state !== 'aiming') { drag = null; return; }
+    if (aimOwner() == null) { drag = null; return; }
     aimAt(e);
   });
   const endDrag = (e) => { if (drag && e.pointerId === drag.id) drag = null; };
@@ -1437,19 +1463,24 @@ export function startApp() {
       if (st === 'paused') { if (key === 'ArrowDown' || key === 'ArrowUp') { e.preventDefault(); moveFocus($('field-overlay'), key === 'ArrowDown' ? 1 : -1); } return; }
       if (st === 'handoff' && key === 'Enter') { e.preventDefault(); beginHumanTurn(); return; }
       if (st === 'battleOver' && key === 'Enter') { e.preventDefault(); showDebrief(); return; }
+      const owner = aimOwner();
+      if (owner != null && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(key)) {
+        e.preventDefault();
+        const aim = session.aim[owner];
+        const step = e.shiftKey ? 5 : 1;
+        if (key === 'ArrowLeft') setAim({ angle: aim.angle + step });
+        else if (key === 'ArrowRight') setAim({ angle: aim.angle - step });
+        else if (key === 'ArrowUp') setAim({ power: aim.power + step });
+        else setAim({ power: aim.power - step });
+        return;
+      }
       if (st !== 'aiming') {
         // Swallow gameplay keys so the page does not scroll mid-shot.
         if ([' ', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(key) && !e.target.closest?.('button')) e.preventDefault();
         return;
       }
-      const aim = session.aim[session.state.actor];
-      const step = e.shiftKey ? 5 : 1;
       const onButton = !!e.target.closest?.('button');
       switch (key) {
-        case 'ArrowLeft': e.preventDefault(); setAim({ angle: aim.angle + step }); return;
-        case 'ArrowRight': e.preventDefault(); setAim({ angle: aim.angle - step }); return;
-        case 'ArrowUp': e.preventDefault(); setAim({ power: aim.power + step }); return;
-        case 'ArrowDown': e.preventDefault(); setAim({ power: aim.power - step }); return;
         case '[': cycleWeapon(-1); return;
         case ']': cycleWeapon(1); return;
         case ' ': case 'Enter': if (onButton) return; e.preventDefault(); fireHuman(); return;
