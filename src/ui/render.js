@@ -44,10 +44,11 @@ export function createRenderer(canvas) {
   const tctx = terrainLayer.getContext('2d');
   let skyKey = '', skyLayer = null, terrainKey = '';
   let q = same; // colour snapper for the current theme
+  let dpr = 1;
 
   function resize() {
     const rect = canvas.getBoundingClientRect();
-    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    dpr = Math.min(window.devicePixelRatio || 1, 3);
     const w = Math.max(320, Math.round(rect.width * dpr)), h = Math.max(128, Math.round(rect.height * dpr));
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
   }
@@ -303,7 +304,8 @@ export function createRenderer(canvas) {
 
     // Crisp overlay
     const px = (x) => x * sx + shakeX, py = (y) => y * sy + shakeY;
-    const unit = Math.max(1, sx);
+    // At least one CSS pixel, so labels and markers stay legible on small high-density screens.
+    const unit = Math.max(dpr, sx);
     if (view.ghost) {
       const s = Math.max(2, Math.round(2 * unit));
       ctx.globalAlpha = 0.45;
@@ -335,7 +337,8 @@ export function createRenderer(canvas) {
         ctx.fillRect(px(p.x) - s / 2, py(p.y) - s / 2, s, s);
       }
     }
-    const fontPx = Math.max(12, Math.round(13 * unit * (view.largeText ? 1.25 : 1)));
+    const narrow = canvas.width / dpr < 600; // phone-sized field: slightly smaller labels so they overlap less
+    const fontPx = Math.max(12, Math.round((narrow ? 11 : 13) * unit * (view.largeText ? 1.25 : 1)));
     ctx.font = `${fontPx}px 'VT323', 'IBM Plex Mono', monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
@@ -349,7 +352,7 @@ export function createRenderer(canvas) {
       ctx.strokeText(text, x, y);
       ctx.fillText(text, x, y);
       if (t.alive) {
-        const bw = 40 * sx, bh = Math.max(3, 3 * sy);
+        const bw = Math.max(40 * sx, 26 * dpr), bh = Math.max(3, 3 * sy, 2 * dpr);
         ctx.fillStyle = '#000';
         ctx.fillRect(x - bw / 2 - 1, y + 1, bw + 2, bh + 2);
         ctx.fillStyle = q(t.color);
@@ -370,6 +373,18 @@ export function createRenderer(canvas) {
     }
     ctx.globalAlpha = 1;
     for (const bub of effects.speech) drawSpeech(bub, state.tanks[bub.tank], px, py, fontPx, unit);
+    if (view.readout) {
+      // Aim numbers while dragging on the field, where a finger hides the HUD.
+      const big = Math.round(fontPx * 1.5), pad = Math.round(6 * unit);
+      ctx.font = `${big}px 'VT323', 'IBM Plex Mono', monospace`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      const w = ctx.measureText(view.readout).width + pad * 2;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
+      ctx.fillRect(pad, pad, w, big + pad);
+      ctx.fillStyle = theme.ui.focus;
+      ctx.fillText(view.readout, pad * 2, pad * 1.5);
+    }
     if (view.diag) drawDiagnostics(ctx, view.diag, px, py, fontPx, theme);
   }
 

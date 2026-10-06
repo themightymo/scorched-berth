@@ -4,6 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <meta name="theme-color" content="#07090f">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Scorched Berth">
+  <meta name="format-detection" content="telephone=no">
   <meta name="description" content="Scorched Berth: a turn-based browser artillery game in the spirit of 1990s DOS shareware.">
   <title>Scorched Berth</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2307090f'/%3E%3Cpath d='M2 12h12v2H2zM4 9h8v3H4zM7 7h2v2H7zM9 7l4-4 1 1-4 4z' fill='%235fe0ee'/%3E%3C/svg%3E">
@@ -54,6 +59,7 @@
             <output id="out-power" for="in-power">65</output>
           </div>
           <p class="keyhint" id="angle-help">←/→ angle · ↑/↓ power · hold Shift ×5</p>
+          <p class="touchhint">Drag on the battlefield to aim. Hold ◄ ► ▲ ▼ to keep adjusting.</p>
         </div>
         <fieldset class="hud-weapons box" id="hud-weapons">
           <legend>PAYLOAD <span class="keyhint" id="weapon-keyhint">1–6 · [ ]</span></legend>

@@ -16,7 +16,7 @@ import { DEFENSES, ACTIVE_DEFENSES, getDefense } from '../core/defenses.js';
 import { createStepper } from '../core/clock.js';
 import { trace } from '../core/physics.js';
 import { WEAPONS, getWeapon, hasAmmo, defaultInventory, sanitizeInventory, emptyInventory, stockInfo } from '../core/weapons.js';
-import { ANGLE_MIN, ANGLE_MAX, POWER_MIN, POWER_MAX } from '../core/constants.js';
+import { ANGLE_MIN, ANGLE_MAX, POWER_MIN, POWER_MAX, W, H, BARREL_HEIGHT } from '../core/constants.js';
 import { clamp } from '../core/math.js';
 import { makeSeedCode, normalizeSeedCode, createRng } from '../core/rng.js';
 import { PROFILE_IDS } from '../core/mapgen.js';
@@ -41,6 +41,8 @@ import { unlockFor, isUnlocked, lockedWeapons, withKit, newlyUnlocked } from '..
 const LIVE = new Set(['aiming', 'aiThinking', 'projectile', 'resolving', 'handoff']);
 const AI_DELAY_MS = 750;
 const QUIP_CHANCE = 0.3;     // how often a tank says something as it fires
+const NUDGE_DELAY_MS = 380;   // hold a nudge button this long before it repeats
+const NUDGE_REPEAT_MS = 70;
 
 export function startApp() {
   // ── Persistence ─────────────────────────────────────────────────────────
@@ -66,6 +68,8 @@ export function startApp() {
   const params = new URLSearchParams(location.search);
   const dev = params.has('dev');
   const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+  const touchQuery = window.matchMedia?.('(hover: none) and (pointer: coarse)');
+  const touch = () => !!touchQuery?.matches;
   const machine = createMachine('title', { onChange: onStateChange });
 
   let session = null;   // current battle or replay
@@ -75,6 +79,7 @@ export function startApp() {
   let editor = null;
   let replayMessage = '';
   let lastFrame = performance.now();
+  let drag = null;      // { id } while a pointer is aiming on the battlefield
 
   const theme = () => THEMES[settings.theme] ?? THEMES.tandy;
   const reduced = () => reducedMotion(settings, motionQuery?.matches);
@@ -909,9 +914,9 @@ export function startApp() {
     let line1, line2;
     if (replay) { line1 = 'REPLAY'; line2 = `${t.name} · turn ${s.turn}`; }
     else if (s.phase === 'battleOver') { line1 = 'BATTLE OVER'; line2 = s.result.winner == null ? 'No winner' : `${s.tanks[s.result.winner].name} wins`; }
-    else if (st === 'paused') { line1 = 'PAUSED'; line2 = 'Press P to resume.'; }
+    else if (st === 'paused') { line1 = 'PAUSED'; line2 = touch() ? 'Tap Resume to continue.' : 'Press P to resume.'; }
     else if (st === 'handoff') { line1 = `PASS TO ${t.name.toUpperCase()}`; line2 = 'Waiting for the next player.'; }
-    else if (humanTurn) { line1 = `▶ YOUR TURN — ${t.name}`; line2 = 'Set angle and power, choose a payload, then FIRE.'; }
+    else if (humanTurn) { line1 = `▶ YOUR TURN — ${t.name}`; line2 = touch() ? 'Drag on the battlefield to aim, choose a payload, then FIRE.' : 'Set angle and power, choose a payload, then FIRE.'; }
     else if (st === 'aiThinking') { line1 = `${t.name.toUpperCase()} AIMING`; line2 = `${getCommander(t.commander).title} · ${DIFFICULTY[t.difficulty].name}. Hold position.`; }
     else { line1 = 'SHOT IN FLIGHT'; line2 = `${t.name} fired. Watch the impact.`; }
     const wt = windText(s.wind);
@@ -961,7 +966,7 @@ export function startApp() {
     const dd = chosen ? getDefense(chosen) : null;
     $('defense-detail').innerHTML = hideNumbers || privateInv ? ''
       : dd ? `<b>${esc(dd.name)}</b> will deploy when this turn ends. ${esc(dd.description)}`
-      : 'None selected. Choose one to deploy after this shot (press D to cycle). Dashed items are automatic.';
+      : `None selected. Choose one to deploy after this shot${touch() ? '' : ' (press D to cycle)'}. Dashed items are automatic.`;
     const w = getWeapon(shownAim.weapon);
     const blast = w.damage.max ? `Damage ${w.damage.max}${w.projectile.kind === 'cluster' ? ` ×${w.projectile.count}` : ''}, radius ${w.damage.radius} m` : 'No blast damage';
     $('weapon-detail').innerHTML = hideNumbers ? '' : `<b>${esc(w.name)}</b> — ${esc(w.role)}. ${blast}${privateInv ? '' : `, ammo ${s.config.rules.unlimitedAmmo || w.ammo.unlimited ? '∞' : inv[w.id] ?? 0}`}. ${esc(w.description)}`;
@@ -1129,6 +1134,7 @@ export function startApp() {
         preview: previewPath(),
         ghost: ghostPath(),
         aim: aimActor != null ? { actor: aimActor, angle: session.aim[aimActor].angle } : null,
+        readout: drag && aimActor != null ? `${session.aim[aimActor].angle}° · POWER ${session.aim[aimActor].power}` : null,
         largeText: settings.textSize === 'large',
         diag: dev && session.diag && machine.state !== 'aiming' ? session.diag : null,
         labels: s.tanks.map((t) => (t.kind === 'ai' ? getCommander(t.commander).short : t.name)),
@@ -1312,13 +1318,70 @@ export function startApp() {
       const current = session.aim[session.state.actor]?.defense;
       return setAim({ defense: current === db.dataset.defense ? null : db.dataset.defense });
     }
+    // Pointer presses are handled on pointerdown (hold to repeat); this covers keyboard activation.
     const nb = e.target.closest('[data-nudge]');
-    if (nb && session) {
-      const [k, d] = nb.dataset.nudge.split(':');
-      const aim = session.aim[session.state.actor];
-      return setAim({ [k]: aim[k] + Number(d) * (e.shiftKey ? 5 : 1) });
-    }
+    if (nb && session && e.detail === 0) nudge(nb, e.shiftKey ? 5 : 1);
   });
+  function nudge(button, step) {
+    const [k, d] = button.dataset.nudge.split(':');
+    const aim = session?.aim[session.state.actor];
+    if (aim) setAim({ [k]: aim[k] + Number(d) * step });
+  }
+
+  // Hold a nudge button to keep adjusting, speeding up the longer it is held.
+  let nudgeTimer = 0;
+  const stopNudge = () => { clearTimeout(nudgeTimer); nudgeTimer = 0; };
+  $('hud').addEventListener('pointerdown', (e) => {
+    const nb = e.target.closest('[data-nudge]');
+    if (!nb || nb.disabled || e.button > 0) return;
+    e.preventDefault();
+    audio.unlock();
+    stopNudge();
+    nudge(nb, e.shiftKey ? 5 : 1);
+    let n = 0;
+    const repeat = () => {
+      if (nb.disabled) return stopNudge();
+      nudge(nb, ++n > 12 ? 5 : 1);
+      nudgeTimer = setTimeout(repeat, NUDGE_REPEAT_MS);
+    };
+    nudgeTimer = setTimeout(repeat, NUDGE_DELAY_MS);
+    nb.addEventListener('pointerleave', stopNudge, { once: true });
+  });
+  for (const type of ['pointerup', 'pointercancel']) document.addEventListener(type, stopNudge);
+  $('hud').addEventListener('contextmenu', (e) => { if (e.target.closest('[data-nudge]')) e.preventDefault(); });
+
+  // Drag on the battlefield to aim: the barrel points at the pointer, and the
+  // farther it is from the tank the more power. Pointer capture keeps the drag
+  // going when a finger leaves the canvas, so the whole screen is usable range.
+  function aimAt(e) {
+    const s = session.state;
+    const t = s.tanks[s.actor];
+    const r = $('field').getBoundingClientRect();
+    const dx = ((e.clientX - r.left) / r.width) * W - t.x;
+    const dy = (t.y - BARREL_HEIGHT) - ((e.clientY - r.top) / r.height) * H;
+    let angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+    if (angle < 0) angle = dx >= 0 ? ANGLE_MIN : ANGLE_MAX; // below the horizon: lie flat on that side
+    // Distance in screen pixels, so a full-power pull feels the same on any field size.
+    const fullPower = clamp(r.width * 0.4, 140, 260);
+    const dist = Math.hypot((dx / W) * r.width, (dy / H) * r.height);
+    setAim({ angle, power: POWER_MIN + (dist / fullPower) * (POWER_MAX - POWER_MIN) });
+  }
+  $('field').addEventListener('pointerdown', (e) => {
+    if (machine.state !== 'aiming' || !session || session.replay || e.button > 0) return;
+    e.preventDefault();
+    audio.unlock();
+    drag = { id: e.pointerId };
+    $('field').setPointerCapture(e.pointerId);
+    aimAt(e);
+  });
+  $('field').addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    if (machine.state !== 'aiming') { drag = null; return; }
+    aimAt(e);
+  });
+  const endDrag = (e) => { if (drag && e.pointerId === drag.id) drag = null; };
+  $('field').addEventListener('pointerup', endDrag);
+  $('field').addEventListener('pointercancel', endDrag);
   $('in-angle').addEventListener('input', (e) => setAim({ angle: Number(e.target.value) }));
   $('in-power').addEventListener('input', (e) => setAim({ power: Number(e.target.value) }));
   $('btn-fire').addEventListener('click', () => { audio.unlock(); fireHuman(); });
