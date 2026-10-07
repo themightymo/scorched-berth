@@ -12,7 +12,7 @@ const MODES = ['active', 'passive'];
 
 export const DEFENSE_DATA = [
   {
-    id: 'shield', name: 'Energy Shield', short: 'SHIELD', glyph: '◯', mode: 'active',
+    id: 'shield', name: 'Heavy Shield', short: 'H SHIELD', glyph: '◯', mode: 'active',
     role: 'Soak the next volley',
     description: 'Projects a bubble that absorbs the next 60 points of blast damage, then collapses. It stays up across turns until it is used up.',
     counterplay: 'Blocks blasts only: fire, vents, and falls go straight through. Big payloads strip it fast.',
@@ -30,13 +30,22 @@ export const DEFENSE_DATA = [
     presentation: { color: '#c9a2ff' },
   },
   {
-    id: 'repair', name: 'Field Repair Kit', short: 'REPAIR', glyph: '✚', mode: 'active',
+    id: 'repair', name: 'Battery', short: 'BATTERY', glyph: '⚡', mode: 'active',
     role: 'Patch the hull',
     description: 'Restores 35 armour at the end of your turn, up to your maximum.',
     counterplay: 'Wasted when you are nearly full, and lost if you die during your own turn.',
     stock: { start: 0, cap: 4, price: 130 },
     params: { heal: 35 },
     presentation: { color: '#9dff6a' },
+  },
+  {
+    id: 'fuel', name: 'Fuel', short: 'FUEL', glyph: '▶', mode: 'active',
+    role: 'Move your tank a little',
+    description: 'Drives your tank up to 55 m in the direction its barrel points after the shot resolves.',
+    counterplay: 'Steep ground, battlefield edges, and other tanks can shorten the move.',
+    stock: { start: 0, cap: 5, price: 75 },
+    params: { distance: 55, clearance: 34 },
+    presentation: { color: '#ffd166' },
   },
   {
     id: 'foam', name: 'Fire Suppressant', short: 'FOAM', glyph: '❄', mode: 'active',

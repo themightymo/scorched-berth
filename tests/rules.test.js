@@ -7,8 +7,8 @@ import { createRng, hashString } from '../src/core/rng.js';
 import { dsin, dcos } from '../src/core/math.js';
 import { W, PAD_HALF_WIDTH } from '../src/core/constants.js';
 
-test('registry holds sixteen validated weapons with distinct projectile behaviour', () => {
-  assert.equal(WEAPONS.length, 16);
+test('registry holds seventeen validated weapons with distinct projectile behaviour', () => {
+  assert.equal(WEAPONS.length, 17);
   assert.deepEqual(new Set(WEAPONS.map((w) => w.projectile.kind)), new Set(['ballistic', 'cluster', 'napalm', 'burrow', 'leapfrog', 'funky', 'roller', 'beam', 'plasma']));
   for (const w of WEAPONS) {
     assert.ok(w.role && w.description && w.counterplay, `${w.id} explains its role and counterplay`);

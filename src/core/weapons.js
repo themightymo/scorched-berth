@@ -10,7 +10,7 @@ const FALLOFFS = ['linear', 'quadratic'];
 
 export const WEAPON_DATA = [
   {
-    id: 'shell', name: 'Standard Shell', short: 'SHELL', glyph: '•',
+    id: 'shell', name: 'Missile', short: 'MISSILE', glyph: '•',
     role: 'Ranging and finishing',
     description: 'Unlimited, predictable round. Use it to range a target and finish damaged tanks.',
     counterplay: 'Small blast: a miss of one tank-width deals little damage.',
@@ -34,7 +34,7 @@ export const WEAPON_DATA = [
     ai: { tags: ['heavy'], cost: 14 },
   },
   {
-    id: 'nuke', name: 'Mini Nuke', short: 'NUKE', glyph: '☢',
+    id: 'nuke', name: 'Nuke', short: 'NUKE', glyph: '☢',
     role: 'Battlefield reset',
     description: 'Huge blast that reshapes the field and can hit several tanks at once.',
     counterplay: 'One per battle, very expensive, and dangerous to the firer at medium range.',
@@ -147,7 +147,19 @@ export const WEAPON_DATA = [
     ai: { tags: ['terrain'], cost: 10 },
   },
   {
-    id: 'riot', name: 'Riot Bomb', short: 'RIOT', glyph: '◌',
+    id: 'riotcharge', name: 'Riot Charge', short: 'RIOT CHG', glyph: '○',
+    role: 'Clear a safe firing pocket',
+    description: 'A compact, harmless dirt-clearing charge. Use it to uncover a buried tank before firing explosives.',
+    counterplay: 'It removes only a modest amount of ground and causes no direct damage.',
+    ammo: { unlimited: false, start: 1, cap: 6, price: 70 },
+    projectile: { kind: 'ballistic' },
+    damage: { max: 0, radius: 1, falloff: 'linear' },
+    crater: { shape: 'circle', radius: 48 },
+    presentation: { color: '#ffe29a', trail: 'line', sound: 'shell' },
+    ai: { tags: ['dig'], cost: 5 },
+  },
+  {
+    id: 'riot', name: 'Heavy Riot Bomb', short: 'HVY RIOT', glyph: '◌',
     role: 'Clear ground without harm',
     description: 'Blows an enormous hole in the ground but harms no one. Drop a tank into the pit, or dig yourself out.',
     counterplay: 'Damage comes only from the fall, and parachutes cancel that.',

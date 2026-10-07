@@ -151,6 +151,16 @@ test('riot bomb blows a huge crater without harming anyone, but the fall still h
   assert.ok(s.events.some((e) => e.t === 'damage' && e.cause === 'fall' && e.to === 1));
 });
 
+test('riot charge clears a smaller safe pocket than the heavy riot bomb', () => {
+  const charge = getWeapon('riotcharge');
+  const heavy = getWeapon('riot');
+  assert.equal(charge.name, 'Riot Charge');
+  assert.equal(heavy.name, 'Heavy Riot Bomb');
+  assert.equal(charge.damage.max, 0);
+  assert.equal(heavy.damage.max, 0);
+  assert.ok(charge.crater.radius < heavy.crater.radius);
+});
+
 test('hot napalm burns wider, hotter, and longer than napalm', () => {
   const a = flatBattle({ xs: [200, 1300], inventory: stocked({ napalm: 1, hotnapalm: 1 }) });
   const b = flatBattle({ xs: [200, 1300], inventory: stocked({ napalm: 1, hotnapalm: 1 }) });

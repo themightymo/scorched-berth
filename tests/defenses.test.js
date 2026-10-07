@@ -33,9 +33,9 @@ function shotAt(s, actor, to, weapon = 'shell') {
   throw new Error('no direct shot found');
 }
 
-test('registry holds ten validated defenses that share the inventory', () => {
-  assert.equal(DEFENSES.length, 10);
-  assert.equal(ACTIVE_DEFENSES.length, 7);
+test('registry holds eleven validated accessories that share the inventory', () => {
+  assert.equal(DEFENSES.length, 11);
+  assert.equal(ACTIVE_DEFENSES.length, 8);
   assert.equal(DEFENSES.filter((d) => d.mode === 'passive').length, 3);
   assert.throws(() => validateDefenses([{ ...DEFENSE_DATA[0], mode: 'sometimes' }]), /mode must be/);
   assert.throws(() => validateDefenses([DEFENSE_DATA[0], DEFENSE_DATA[0]]), /duplicate/);
@@ -121,6 +121,17 @@ test('repair kit restores armour up to the maximum', () => {
   pass(s, 'repair');
   assert.equal(s.tanks[0].hp, 85);
   assert.equal(s.tanks[0].inventory.repair, 1);
+});
+
+test('fuel moves toward the barrel direction and is blocked by nearby tanks', () => {
+  const s = flatBattle({ xs: [200, 270, 900], inventory: stocked({ fuel: 2 }) });
+  const cmd = fire(s, 'shell', 30, 30);
+  cmd.use = 'fuel';
+  assert.ok(applyCommand(s, cmd).ok);
+  runUntilIdle(s);
+  assert.equal(s.tanks[0].x, 236, 'stops at the configured clearance from the next tank');
+  assert.equal(s.tanks[0].inventory.fuel, 1);
+  assert.ok(s.events.some((e) => e.t === 'defense' && e.item === 'fuel' && e.from === 200 && e.x === 236));
 });
 
 test('parachute prevents fall damage once', () => {

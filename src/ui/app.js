@@ -119,7 +119,7 @@ export function startApp() {
   }
 
   // ── Screens ─────────────────────────────────────────────────────────────
-  function showScreen(content, { focus = true } = {}) {
+  function showScreen(content, { focus = true, scrollTop = 0 } = {}) {
     editor?.destroy(); editor = null;
     $('battle').hidden = true;
     const screen = $('screen');
@@ -131,7 +131,7 @@ export function startApp() {
       const target = screen.querySelector('[data-nav].primary:not([disabled])') ?? screen.querySelector('[data-nav]:not([disabled])');
       (target ?? screen).focus({ preventScroll: true });
     }
-    window.scrollTo({ top: 0 });
+    window.scrollTo({ top: scrollTop });
   }
 
   function showBattleView() {
@@ -139,7 +139,17 @@ export function startApp() {
     $('screen').hidden = true;
     $('screen').innerHTML = '';
     $('battle').hidden = false;
+    setMobileHud(false);
     $('field-frame').tabIndex = 0;
+  }
+
+  function setMobileHud(open) {
+    const hud = $('hud');
+    const toggle = $('mobile-hud-toggle');
+    if (!hud || !toggle) return;
+    hud.classList.toggle('mobile-open', open);
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.setAttribute('aria-label', open ? 'Close battle controls' : 'Open battle controls');
   }
 
   function onStateChange(to) {
@@ -558,15 +568,15 @@ export function startApp() {
     showScreen(S.tournamentEndScreen(run, best, unlocked));
   }
 
-  function openArmory(message = '') {
+  function openArmory(message = '', scrollTop = 0) {
     machine.go('armory');
-    if (session?.mode === 'hotseat' || hot?.shopping) return renderHotArmory(message);
+    if (session?.mode === 'hotseat' || hot?.shopping) return renderHotArmory(message, scrollTop);
     showScreen(S.armoryScreen({
       who: settings.playerName, credits: run.credits, inventory: run.inventory, message, locks: armoryLocks(),
       heading: `TOURNAMENT · BEFORE ROUND ${run.round + 1}: ${T.ROUNDS[run.round].name.toUpperCase()}`,
       nextLabel: `To briefing: round ${run.round + 1}`,
       history: `Score ${run.score}. Next: ${T.opponentsFor(run, run.round).map((o) => `${getCommander(o.commander).name} (${DIFFICULTY[o.difficulty].name})`).join(', ')}.`,
-    }), { focus: !message });
+    }), { focus: !message, scrollTop });
   }
 
   /** Locked weapon id → { text, have, goal } for the armory cards. */
@@ -607,7 +617,7 @@ export function startApp() {
     openArmory();
   }
 
-  function renderHotArmory(message = '') {
+  function renderHotArmory(message = '', scrollTop = 0) {
     const sh = hot.shopping;
     const idx = sh.order[sh.index];
     const p = setupModel.players[idx];
@@ -618,7 +628,7 @@ export function startApp() {
       return;
     }
     const wallet = hot.wallets[idx];
-    showScreen(S.armoryScreen({ who: p.name, credits: wallet.credits, inventory: wallet.inventory, message, locks: armoryLocks(), heading: `HOT-SEAT · BEFORE ROUND ${hot.round}`, nextLabel: sh.index + 1 < sh.order.length ? 'Done: pass to next player' : 'Done: to briefing' }), { focus: !message });
+    showScreen(S.armoryScreen({ who: p.name, credits: wallet.credits, inventory: wallet.inventory, message, locks: armoryLocks(), heading: `HOT-SEAT · BEFORE ROUND ${hot.round}`, nextLabel: sh.index + 1 < sh.order.length ? 'Done: pass to next player' : 'Done: to briefing' }), { focus: !message, scrollTop });
   }
 
   // ── Challenges / daily / editor / replays ───────────────────────────────
@@ -979,6 +989,7 @@ export function startApp() {
       : dd ? `<b>${esc(dd.name)}</b> will deploy when this turn ends. ${esc(dd.description)}`
       : `None selected. Choose one to deploy after this shot${touch() ? '' : ' (press D to cycle)'}. Dashed items are automatic.`;
     const w = getWeapon(shownAim.weapon);
+    $('mobile-hud-label').textContent = `${w.short} · ${hideNumbers ? '—' : `${dial.angle}°/${dial.power}`}`;
     const blast = w.damage.max ? `Damage ${w.damage.max}${w.projectile.kind === 'cluster' ? ` ×${w.projectile.count}` : ''}, radius ${w.damage.radius} m` : 'No blast damage';
     $('weapon-detail').innerHTML = hideNumbers ? '' : `<b>${esc(w.name)}</b> — ${esc(w.role)}. ${blast}${privateInv ? '' : `, ammo ${s.config.rules.unlimitedAmmo || w.ammo.unlimited ? '∞' : inv[w.id] ?? 0}`}. ${esc(w.description)}`;
 
@@ -1259,24 +1270,25 @@ export function startApp() {
         return openTournamentStage();
       case 'buy':
       case 'sell': {
+        const armoryScrollTop = window.scrollY;
         const fn = action === 'buy' ? buy : sell;
         if (action === 'buy' && lockedSet().has(arg)) {
           audio.play('deny');
           const why = `${stockInfo(arg).name} is locked: ${unlockFor(arg).text}.`;
-          return hot?.shopping ? renderHotArmory(why) : openArmory(why);
+          return hot?.shopping ? renderHotArmory(why, armoryScrollTop) : openArmory(why, armoryScrollTop);
         }
         if (hot?.shopping) {
           const idx = hot.shopping.order[hot.shopping.index];
           const res = fn(hot.wallets[idx], arg);
           if (res.ok) hot.wallets[idx] = { credits: res.credits, inventory: res.inventory };
           audio.play(res.ok ? 'ui' : 'deny');
-          return renderHotArmory(res.ok ? `${action === 'buy' ? 'Bought' : 'Sold'} ${stockInfo(arg).name}.` : res.error);
+          return renderHotArmory(res.ok ? `${action === 'buy' ? 'Bought' : 'Sold'} ${stockInfo(arg).name}.` : res.error, armoryScrollTop);
         }
         const res = fn({ credits: run.credits, inventory: run.inventory }, arg);
         if (res.ok) { run = T.updateWallet(run, res.credits, res.inventory); T.saveRun(store, run); }
         audio.play(res.ok ? 'ui' : 'deny');
-        openArmory(res.ok ? `${action === 'buy' ? 'Bought' : 'Sold'} ${stockInfo(arg).name}.` : res.error);
-        document.querySelector(`[data-action="${action}"][data-arg="${arg}"]`)?.focus();
+        openArmory(res.ok ? `${action === 'buy' ? 'Bought' : 'Sold'} ${stockInfo(arg).name}.` : res.error, armoryScrollTop);
+        document.querySelector(`[data-action="${action}"][data-arg="${arg}"]`)?.focus({ preventScroll: true });
         return;
       }
       case 'armory-done': {
@@ -1342,17 +1354,21 @@ export function startApp() {
   $('hud').addEventListener('click', (e) => {
     audio.unlock();
     const wb = e.target.closest('[data-weapon]');
-    if (wb) return setAim({ weapon: wb.dataset.weapon });
+    if (wb) { setAim({ weapon: wb.dataset.weapon }); setMobileHud(false); return; }
     const db = e.target.closest('[data-defense]');
     if (db && session) {
       // Clicking the selected defense again clears it.
       const current = session.aim[session.state.actor]?.defense;
-      return setAim({ defense: current === db.dataset.defense ? null : db.dataset.defense });
+      setAim({ defense: current === db.dataset.defense ? null : db.dataset.defense });
+      setMobileHud(false);
+      return;
     }
     // Pointer presses are handled on pointerdown (hold to repeat); this covers keyboard activation.
     const nb = e.target.closest('[data-nudge]');
     if (nb && session && e.detail === 0) nudge(nb, e.shiftKey ? 5 : 1);
   });
+  $('mobile-hud-toggle').addEventListener('click', () => setMobileHud(!$('hud').classList.contains('mobile-open')));
+  $('mobile-hud-close').addEventListener('click', () => setMobileHud(false));
   function nudge(button, step) {
     const [k, d] = button.dataset.nudge.split(':');
     const owner = aimOwner();
@@ -1475,6 +1491,7 @@ export function startApp() {
     }
 
     if (session && (LIVE.has(st) || st === 'paused' || st === 'battleOver')) {
+      if (key === 'Escape' && $('hud').classList.contains('mobile-open')) { e.preventDefault(); setMobileHud(false); return; }
       if (key === 'Escape' || lower === 'p') {
         e.preventDefault();
         if (st === 'paused') resumeBattle(); else pauseBattle();
@@ -1503,7 +1520,11 @@ export function startApp() {
       switch (key) {
         case '[': cycleWeapon(-1); return;
         case ']': cycleWeapon(1); return;
-        case ' ': case 'Enter': if (onButton) return; e.preventDefault(); fireHuman(); return;
+        case ' ':
+          // Space is always the battle's fire key, even after a payload or
+          // accessory was clicked and its button still owns keyboard focus.
+          e.preventDefault(); fireHuman(); return;
+        case 'Enter': if (onButton) return; e.preventDefault(); fireHuman(); return;
         default: break;
       }
       if (lower === 'f') { fireHuman(); return; }

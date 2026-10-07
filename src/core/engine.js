@@ -681,6 +681,23 @@ function deployDefense(state) {
       event.amount = t.hp - before;
       break;
     }
+    case 'fuel': {
+      const dir = t.angle <= 90 ? 1 : -1;
+      const from = t.x;
+      let x = from;
+      for (let step = 1; step <= p.distance; step++) {
+        const next = Math.round(from + dir * step);
+        if (next < 18 || next >= state.terrain.length - 18) break;
+        if (state.tanks.some((other) => other !== t && other.alive && Math.abs(other.x - next) < p.clearance)) break;
+        x = next;
+      }
+      t.x = x;
+      t.y = supportY(state.terrain, x);
+      t.falling = null;
+      event.from = from;
+      event.x = x;
+      break;
+    }
     case 'foam':
       extinguish(state, t.x - p.reach, t.x + p.reach, 'foam');
       t.fx.fireproof = p.rounds;

@@ -164,9 +164,17 @@ try {
     assert(await page.eval("__sb.machine.state === 'armory'"), 'no armory');
     await page.screenshot(`${OUT}/armory.png`);
     const c0 = await page.eval('__sb.run.credits');
-    await page.eval("document.querySelector('[data-action=\"buy\"]:not([disabled])')?.click()");
+    const armoryScroll = await page.eval(`(() => {
+      const buttons = [...document.querySelectorAll('[data-action="buy"]:not([disabled])')];
+      const button = buttons.at(-1);
+      button?.scrollIntoView({ block: 'center' });
+      const before = window.scrollY;
+      button?.click();
+      return before;
+    })()`);
     assert(await page.eval('__sb.run.credits') <= c0, 'purchase increased credits');
     assert(await page.eval('__sb.run.credits') >= 0, 'negative credits');
+    assert(Math.abs(await page.eval('window.scrollY') - armoryScroll) < 2, 'purchase reset armory scroll');
     await page.click('[data-action="armory-done"]');
     assert(await page.eval("__sb.machine.state === 'briefing'"), 'armory did not lead to briefing');
     await page.key('Escape');
@@ -228,8 +236,16 @@ try {
     await page.click('[data-action="setup-go"]');
     await page.click('[data-action="deploy"]');
     await sleep(300);
-    assert(await page.eval('document.documentElement.scrollWidth <= window.innerWidth'), 'battle overflows');
     await page.screenshot(`${OUT}/mobile-battle.png`);
+    assert(await page.eval('document.documentElement.scrollWidth <= window.innerWidth'), 'battle overflows');
+    assert(await page.eval(`(() => { const r = document.getElementById('field-frame').getBoundingClientRect(); return r.top === 0 && r.left === 0 && Math.abs(r.width - innerWidth) < 2 && Math.abs(r.height - innerHeight) < 2; })()`), 'battlefield does not fill phone viewport');
+    assert(await page.eval("getComputedStyle(document.getElementById('mobile-hud-toggle')).display !== 'none'"), 'mobile loadout button hidden');
+    assert(await page.eval("getComputedStyle(document.getElementById('btn-fire')).position !== 'static'"), 'mobile fire control is not over the battlefield');
+    await page.click('#mobile-hud-toggle');
+    assert(await page.eval("document.getElementById('hud').classList.contains('mobile-open') && document.getElementById('mobile-hud-toggle').getAttribute('aria-expanded') === 'true'"), 'mobile battle menu did not open');
+    assert(await page.eval("document.getElementById('hud').getBoundingClientRect().height > 200"), 'mobile battle menu has no usable drawer');
+    await page.click('#mobile-hud-close');
+    assert(await page.eval("!document.getElementById('hud').classList.contains('mobile-open')"), 'mobile battle menu did not close');
     await page.setViewport(1366, 900);
   });
 
