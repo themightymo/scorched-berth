@@ -245,7 +245,8 @@ try {
     await sleep(300);
     await page.screenshot(`${OUT}/mobile-battle.png`);
     assert(await page.eval('document.documentElement.scrollWidth <= window.innerWidth'), 'battle overflows');
-    assert(await page.eval(`(() => { const field = document.getElementById('field-frame').getBoundingClientRect(); const fire = document.querySelector('.hud-fire').getBoundingClientRect(); return field.top === 0 && field.left === 0 && Math.abs(field.width - innerWidth) < 2 && Math.abs(field.bottom - fire.top) < 2 && Math.abs(fire.bottom - innerHeight) < 2; })()`), 'mobile battlefield and fire tray do not occupy separate rows');
+    assert(await page.eval(`(() => { const field = document.getElementById('field-frame').getBoundingClientRect(); const fire = document.querySelector('.hud-fire').getBoundingClientRect(); return field.left === 0 && Math.abs(field.width - innerWidth) < 2 && field.bottom <= fire.top && Math.abs(fire.bottom - innerHeight) < 2; })()`), 'mobile battlefield and fire tray overlap');
+    assert(await page.eval(`(() => { const field = document.getElementById('field-frame').getBoundingClientRect(); return Math.abs(field.width / field.height - 1400 / 560) < 0.01; })()`), 'portrait battlefield aspect ratio is distorted');
     assert(await page.eval("getComputedStyle(document.getElementById('mobile-hud-toggle')).display !== 'none'"), 'mobile loadout button hidden');
     assert(await page.eval("getComputedStyle(document.querySelector('.hud-fire')).position === 'fixed'"), 'mobile fire tray is not fixed below the battlefield');
     assert(await page.eval(`[...document.querySelectorAll('.topbar .tb-btn:not([hidden])')].every((b) => { const s = getComputedStyle(b); return s.color !== s.backgroundColor; })`), 'mobile top buttons have unreadable contrast');
