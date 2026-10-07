@@ -124,7 +124,12 @@ export function startApp() {
   // ── Screens ─────────────────────────────────────────────────────────────
   function showScreen(content, { focus = true, scrollTop = 0 } = {}) {
     editor?.destroy(); editor = null;
+    document.documentElement.classList.remove('battle-active');
     $('battle').hidden = true;
+    $('hud').removeAttribute('inert');
+    const overlay = $('field-overlay');
+    overlay.hidden = true;
+    overlay.innerHTML = '';
     const screen = $('screen');
     screen.hidden = false;
     screen.innerHTML = content.html;
@@ -139,6 +144,7 @@ export function startApp() {
 
   function showBattleView() {
     editor?.destroy(); editor = null;
+    document.documentElement.classList.add('battle-active');
     $('screen').hidden = true;
     $('screen').innerHTML = '';
     $('battle').hidden = false;

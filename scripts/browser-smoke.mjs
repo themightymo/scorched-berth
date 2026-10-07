@@ -161,8 +161,11 @@ try {
     await page.click('[data-action="go"]');
     assert(await page.eval("__sb.machine.state === 'debrief'"), 'did not reopen debrief');
     assert(await page.eval('__sb.run.credits') === credits, 'credits changed on reload');
+    await page.setViewport(375, 812, true);
     await page.click('[data-action="t-continue"]');
     assert(await page.eval("__sb.machine.state === 'armory'"), 'no armory');
+    assert(await page.eval("!document.documentElement.classList.contains('battle-active')"), 'battle layer remained active over the mobile armory');
+    await page.setViewport(1366, 900);
     await page.screenshot(`${OUT}/armory.png`);
     const c0 = await page.eval('__sb.run.credits');
     const armoryScroll = await page.eval(`(() => {
@@ -242,7 +245,7 @@ try {
     await sleep(300);
     await page.screenshot(`${OUT}/mobile-battle.png`);
     assert(await page.eval('document.documentElement.scrollWidth <= window.innerWidth'), 'battle overflows');
-    assert(await page.eval(`(() => { const r = document.getElementById('field-frame').getBoundingClientRect(); return r.top === 0 && r.left === 0 && Math.abs(r.width - innerWidth) < 2 && Math.abs(r.height - innerHeight) < 2; })()`), 'battlefield does not fill phone viewport');
+    assert(await page.eval(`(() => { const field = document.getElementById('field-frame').getBoundingClientRect(); const fire = document.querySelector('.hud-fire').getBoundingClientRect(); return field.top === 0 && field.left === 0 && Math.abs(field.width - innerWidth) < 2 && field.bottom <= fire.top; })()`), 'battlefield overlaps the mobile fire controls');
     assert(await page.eval("getComputedStyle(document.getElementById('mobile-hud-toggle')).display !== 'none'"), 'mobile loadout button hidden');
     assert(await page.eval("getComputedStyle(document.getElementById('btn-fire')).position !== 'static'"), 'mobile fire control is not over the battlefield');
     assert(await page.eval(`[...document.querySelectorAll('.topbar .tb-btn:not([hidden])')].every((b) => { const s = getComputedStyle(b); return s.color !== s.backgroundColor; })`), 'mobile top buttons have unreadable contrast');
