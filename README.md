@@ -84,7 +84,7 @@ Every control also works with the mouse. Page scrolling is blocked only while ga
   | --- | --- | --- |
   | ≈ Leapfrog | Win 3 battles | Explodes, then hops onward twice; each hop is weaker. |
   | ◌ Riot Bomb | Fire 75 shots | Enormous crater, no blast damage: drop a tank into the pit or dig yourself out. |
-  | ▲ Ton of Dirt | Fight 10 battles | Drops a ball of earth. A tank caught in it sits in a pit and must fire steeply or blast free. |
+  | ▲ Ton O' Dirt | Fight 10 battles | Drops a huge ball of earth. A tank caught in it sits in a pit and must fire steeply or blast free. |
   | ♨ Hot Napalm | Deal 250 burn damage with fire | Wider, hotter, longer-lasting napalm. |
   | ⌁ Laser | Land 10 direct hits | Straight beam with no gravity or wind; power sets its range; hills block it. |
   | ◉ Heavy Roller | Earn 6 challenge stars | Lands, rolls downhill, and explodes at a tank or the valley floor. |

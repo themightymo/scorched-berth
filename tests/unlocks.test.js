@@ -121,7 +121,7 @@ test('heavy roller stops at a tank in its path and deals a direct hit', () => {
   assert.ok(s.tanks[1].hp < s.tanks[1].maxHp);
 });
 
-test('ton of dirt deals no damage and buries a tank in a pit', () => {
+test("Ton O' Dirt deals no damage and buries a tank in a pit", () => {
   const s = flatBattle({ xs: [200, 800], inventory: stocked({ dirt: 1 }) });
   const before = s.tanks[1].hp;
   for (let a = 30; a <= 80; a++) for (let p = 30; p <= 100; p++) {
@@ -136,6 +136,23 @@ test('ton of dirt deals no damage and buries a tank in a pit', () => {
     }
   }
   assert.fail('no shot found');
+});
+
+test("Dirt Clod builds a smaller harmless mound than Ton O' Dirt", () => {
+  const clod = getWeapon('dirtclod');
+  const ton = getWeapon('dirt');
+  assert.equal(clod.name, 'Dirt Clod');
+  assert.equal(ton.name, "Ton O' Dirt");
+  assert.equal(clod.damage.max, 0);
+  assert.equal(clod.crater.shape, 'mound');
+  assert.ok(clod.crater.radius < ton.crater.radius);
+
+  const s = flatBattle({ xs: [200, 800], inventory: stocked({ dirtclod: 1 }) });
+  const { a, p } = landNear(s, 600);
+  const before = s.tanks.map((t) => t.hp);
+  shoot(s, 'dirtclod', a, p);
+  assert.deepEqual(s.tanks.map((t) => t.hp), before);
+  assert.ok(groundAt(s.terrain, 600) < 400, 'the clod raises ground at impact');
 });
 
 test('riot bomb blows a huge crater without harming anyone, but the fall still hurts', () => {

@@ -487,7 +487,7 @@ button:active:not(:disabled) { border-color: var(--accent); }
   }
 
   .battle {
-    --mobile-fire-tray: calc(78px + env(safe-area-inset-bottom));
+    --mobile-fire-tray: calc(76px + env(safe-area-inset-bottom));
     position: fixed; z-index: 10; inset: 0; display: block; background: var(--bg);
   }
   .battle .field-frame {
@@ -525,8 +525,9 @@ button:active:not(:disabled) { border-color: var(--accent); }
   /* FIRE remains available while the drawer is closed. */
   .hud:not(.mobile-open) .hud-fire {
     display: flex; visibility: visible; position: fixed; z-index: 41;
-    left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom));
-    margin: 0; padding: 6px; pointer-events: auto; background: rgba(14, 20, 36, 0.9); border: 2px solid var(--line);
+    left: 0; right: 0; bottom: 0; height: var(--mobile-fire-tray); box-sizing: border-box;
+    margin: 0; padding: 8px max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+    pointer-events: auto; background: var(--panel); border: 0; border-top: 2px solid var(--line);
   }
   .hud:not(.mobile-open) .hud-fire .btn-fire { min-height: 50px; }
   .field-overlay.modal { position: fixed; z-index: 50; }
