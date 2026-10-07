@@ -404,7 +404,7 @@ export function helpContent() {
     <h3>Turn flow</h3>
     <p>Each tank fires once per turn. Set angle and power, choose a payload, and fire. 90° is straight up; below 90° fires right, above fires left. Craters reshape the ground. Tanks fall when the ground beneath them is removed, and a fall of more than 20 m causes damage. A direct hit always deals a weapon's full damage. When you are the only human in the battle, you can keep adjusting angle and power while the computer takes its turns, so your next shot is ready when your turn comes.</p>
     <h3>Controls</h3>
-    <p><b>Touch or mouse:</b> drag on the battlefield to aim. The barrel points at your finger, and the farther you drag from your tank, the more power. Hold the ◄ ► ▲ ▼ buttons to keep adjusting. Tap a payload, then FIRE.</p>
+    <p><b>Touch:</b> swipe anywhere on the battlefield. Left/right changes angle and up/down changes power; the overlaid tracks show both values. <b>Mouse:</b> drag on the battlefield to point the barrel and set power by distance. Hold the ◄ ► ▲ ▼ buttons to keep adjusting. Tap a payload, then FIRE.</p>
     <table class="keys"><tbody>
       <tr><th scope="row"><kbd>←</kbd> <kbd>→</kbd></th><td>Angle ±1° (hold <kbd>Shift</kbd> for ±5°)</td></tr>
       <tr><th scope="row"><kbd>↑</kbd> <kbd>↓</kbd></th><td>Power ±1 (hold <kbd>Shift</kbd> for ±5)</td></tr>

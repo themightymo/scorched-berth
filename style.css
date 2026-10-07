@@ -141,6 +141,7 @@ code { font-family: var(--mono); color: var(--warn); }
 .field-frame { position: relative; border: 3px double var(--line); background: #000; aspect-ratio: 1400 / 560; width: 100%; overflow: hidden; }
 .field-frame:focus-visible { outline-offset: -3px; }
 .field-frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
+.aim-swipe-overlay { display: none; }
 .crt { position: absolute; inset: 0; pointer-events: none; }
 html.scanlines .crt {
   background:
@@ -347,7 +348,33 @@ button:active:not(:disabled) { border-color: var(--accent); }
   input[type=checkbox], input[type=radio] { width: 1.4em; height: 1.4em; }
   .keyhint, button kbd, .weapon-btn .wkey { display: none; }
   .touchhint { display: block; }
+  .hud-aim { display: none; }
   .hud .weapon-btn { padding: 6px 8px; }
+  .aim-swipe-overlay {
+    --angle: 25%; --power: 61%;
+    position: absolute; inset: 0; z-index: 3; display: block; pointer-events: none;
+    color: var(--focus); font: 0.7rem/1 var(--mono); opacity: 0.72;
+  }
+  .aim-swipe-overlay:not(.available) { opacity: 0; }
+  .aim-swipe-overlay > p {
+    position: absolute; left: 50%; bottom: 7px; transform: translateX(-50%); margin: 0;
+    padding: 4px 7px; color: var(--text); background: rgba(7, 9, 15, 0.72); white-space: nowrap;
+  }
+  .swipe-angle {
+    position: absolute; left: 10px; right: 38px; bottom: 31px; height: 18px;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.38);
+  }
+  .swipe-angle i { position: absolute; left: 0; bottom: -2px; width: var(--angle); border-bottom: 3px solid var(--focus); }
+  .swipe-angle output { position: absolute; right: 0; }
+  .swipe-power {
+    position: absolute; top: 10px; right: 9px; bottom: 55px; width: 26px;
+    border-left: 2px solid rgba(255, 255, 255, 0.38);
+  }
+  .swipe-power i { position: absolute; left: -2px; bottom: 0; height: var(--power); border-left: 3px solid var(--accent); }
+  .swipe-power span { position: absolute; top: 0; left: -6px; transform: rotate(90deg); transform-origin: left top; }
+  .swipe-power output { position: absolute; bottom: 0; right: 0; padding: 2px; background: rgba(7, 9, 15, 0.72); }
+  .aim-swipe-overlay.active { opacity: 1; }
+  .aim-swipe-overlay.active > p { color: var(--focus); }
 }
 
 /* Phones in portrait */

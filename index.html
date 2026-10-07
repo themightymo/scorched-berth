@@ -36,6 +36,11 @@
     <section id="battle" class="battle" hidden aria-label="Battle">
       <div class="field-frame" id="field-frame">
         <canvas id="field" width="1400" height="560" role="img" aria-label="Battlefield"></canvas>
+        <div class="aim-swipe-overlay" id="aim-swipe-overlay" aria-hidden="true">
+          <div class="swipe-angle"><span>ANGLE</span><i></i><output id="swipe-angle-value">45°</output></div>
+          <div class="swipe-power"><span>POWER</span><i></i><output id="swipe-power-value">65</output></div>
+          <p>SWIPE ↔ ANGLE · ↕ POWER</p>
+        </div>
         <div class="crt" aria-hidden="true"></div>
         <div class="banner" id="banner" aria-hidden="true"></div>
         <div class="field-overlay" id="field-overlay" hidden></div>
@@ -59,7 +64,7 @@
             <output id="out-power" for="in-power">65</output>
           </div>
           <p class="keyhint" id="angle-help">←/→ angle · ↑/↓ power · hold Shift ×5</p>
-          <p class="touchhint">Drag on the battlefield to aim. Hold ◄ ► ▲ ▼ to keep adjusting.</p>
+          <p class="touchhint">Swipe anywhere on the battlefield: left/right changes angle, up/down changes power.</p>
         </div>
         <fieldset class="hud-weapons box" id="hud-weapons">
           <legend>PAYLOAD <span class="keyhint" id="weapon-keyhint">1–6 · [ ]</span></legend>

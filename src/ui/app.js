@@ -80,7 +80,7 @@ export function startApp() {
   let editor = null;
   let replayMessage = '';
   let lastFrame = performance.now();
-  let drag = null;      // { id } while a pointer is aiming on the battlefield
+  let drag = null;      // active battlefield pointer (absolute mouse aim or relative touch aim)
 
   const theme = () => THEMES[settings.theme] ?? THEMES.tandy;
   const reduced = () => reducedMotion(settings, motionQuery?.matches);
@@ -919,7 +919,7 @@ export function startApp() {
     else if (s.phase === 'battleOver') { line1 = 'BATTLE OVER'; line2 = s.result.winner == null ? 'No winner' : `${s.tanks[s.result.winner].name} wins`; }
     else if (st === 'paused') { line1 = 'PAUSED'; line2 = touch() ? 'Tap Resume to continue.' : 'Press P to resume.'; }
     else if (st === 'handoff') { line1 = `PASS TO ${t.name.toUpperCase()}`; line2 = 'Waiting for the next player.'; }
-    else if (humanTurn) { line1 = `▶ YOUR TURN — ${t.name}`; line2 = touch() ? 'Drag on the battlefield to aim, choose a payload, then FIRE.' : 'Set angle and power, choose a payload, then FIRE.'; }
+    else if (humanTurn) { line1 = `▶ YOUR TURN — ${t.name}`; line2 = touch() ? 'Swipe the battlefield: ↔ angle, ↕ power. Choose a payload, then FIRE.' : 'Set angle and power, choose a payload, then FIRE.'; }
     else if (st === 'aiThinking') { line1 = `${t.name.toUpperCase()} AIMING`; line2 = `${getCommander(t.commander).title} · ${DIFFICULTY[t.difficulty].name}.${planning ? ' Line up your next shot while you wait.' : ' Hold position.'}`; }
     else { line1 = 'SHOT IN FLIGHT'; line2 = `${t.name} fired. Watch the impact.`; }
     const wt = windText(s.wind);
@@ -936,6 +936,12 @@ export function startApp() {
     const hideNumbers = st === 'handoff';
     $('in-angle').value = dial.angle; $('out-angle').value = hideNumbers ? '—' : `${dial.angle}°`;
     $('in-power').value = dial.power; $('out-power').value = hideNumbers ? '—' : `${dial.power}`;
+    const swipe = $('aim-swipe-overlay');
+    swipe.classList.toggle('available', owner != null && !hideNumbers);
+    swipe.style.setProperty('--angle', `${((dial.angle - ANGLE_MIN) / (ANGLE_MAX - ANGLE_MIN)) * 100}%`);
+    swipe.style.setProperty('--power', `${((dial.power - POWER_MIN) / (POWER_MAX - POWER_MIN)) * 100}%`);
+    $('swipe-angle-value').value = hideNumbers ? '—' : `${dial.angle}°`;
+    $('swipe-power-value').value = hideNumbers ? '—' : `${dial.power}`;
     for (const id of ['in-angle', 'in-power']) $(id).disabled = owner == null;
     document.querySelectorAll('[data-nudge]').forEach((b) => { b.disabled = owner == null; });
     $('btn-fire').disabled = !humanTurn;
@@ -1375,9 +1381,8 @@ export function startApp() {
   for (const type of ['pointerup', 'pointercancel']) document.addEventListener(type, stopNudge);
   $('hud').addEventListener('contextmenu', (e) => { if (e.target.closest('[data-nudge]')) e.preventDefault(); });
 
-  // Drag on the battlefield to aim: the barrel points at the pointer, and the
-  // farther it is from the tank the more power. Pointer capture keeps the drag
-  // going when a finger leaves the canvas, so the whole screen is usable range.
+  // Mouse input points the barrel at the cursor. Touch input is relative so a
+  // swipe anywhere on a small field adjusts both dials without an initial jump.
   function aimAt(e) {
     const owner = aimOwner();
     if (owner == null) return;
@@ -1396,16 +1401,31 @@ export function startApp() {
     if (aimOwner() == null || e.button > 0) return;
     e.preventDefault();
     audio.unlock();
-    drag = { id: e.pointerId };
+    const aim = session.aim[aimOwner()];
+    drag = { id: e.pointerId, touch: e.pointerType === 'touch' || touch(), x: e.clientX, y: e.clientY, angle: aim.angle, power: aim.power };
     $('field').setPointerCapture(e.pointerId);
-    aimAt(e);
+    $('aim-swipe-overlay').classList.add('active');
+    if (!drag.touch) aimAt(e);
   });
   $('field').addEventListener('pointermove', (e) => {
     if (!drag || e.pointerId !== drag.id) return;
     if (aimOwner() == null) { drag = null; return; }
-    aimAt(e);
+    if (drag.touch) {
+      const r = $('field').getBoundingClientRect();
+      const dx = e.clientX - drag.x;
+      const dy = e.clientY - drag.y;
+      setAim({
+        // Angle's on-screen direction matches the barrel and the existing RTL slider.
+        angle: drag.angle - (dx / r.width) * (ANGLE_MAX - ANGLE_MIN),
+        power: drag.power - (dy / r.height) * (POWER_MAX - POWER_MIN),
+      });
+    } else aimAt(e);
   });
-  const endDrag = (e) => { if (drag && e.pointerId === drag.id) drag = null; };
+  const endDrag = (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    drag = null;
+    $('aim-swipe-overlay').classList.remove('active');
+  };
   $('field').addEventListener('pointerup', endDrag);
   $('field').addEventListener('pointercancel', endDrag);
   $('in-angle').addEventListener('input', (e) => setAim({ angle: Number(e.target.value) }));
