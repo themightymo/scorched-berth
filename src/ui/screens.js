@@ -31,6 +31,11 @@ const objectiveText = (o) => (o?.type === 'surviveTurns' ? `Survive until turn $
 export function titleScreen({ run, records, notices, dailyKey, daily }) {
   const t = records.totals;
   const active = run && run.status === 'active';
+  const goLabel = !active ? 'GO — buy stuff, then battle'
+    : run.stage === 'armory' ? `GO — buy stuff for round ${run.round + 1}`
+      : run.stage === 'battle' ? `GO — resume battle ${run.round + 1}/${ROUNDS.length}`
+        : run.stage === 'debrief' ? 'GO — review the last battle'
+          : `GO — continue round ${run.round + 1}/${ROUNDS.length}`;
   return html`
   <section class="title-screen" aria-labelledby="title-h">
     <pre class="logo" aria-hidden="true">${LOGO}</pre>
@@ -40,19 +45,25 @@ export function titleScreen({ run, records, notices, dailyKey, daily }) {
     <div class="title-grid">
       <nav class="menu box" aria-label="Main menu">
         <h2 class="box-title">MAIN MENU</h2>
-        ${active ? btn('tournament-continue', `Continue Tournament — Round ${run.round + 1}/${ROUNDS.length}`, { cls: 'primary' }) : ''}
-        ${btn('tournament-new', active ? 'New Tournament (abandons current run)' : 'Tournament — five escalating battles', { cls: active ? '' : 'primary' })}
-        ${btn('quick', 'Quick Battle')}
-        ${btn('challenges', 'Challenges')}
-        ${btn('daily', `Daily Challenge · ${dailyKey}${daily ? ` · best ${daily.best}` : ''}`)}
-        ${btn('hotseat', 'Hot-Seat (pass and play)')}
-        ${btn('sandbox', 'Sandbox')}
-        ${btn('editor', 'Map Editor')}
-        ${btn('replays', 'Replays')}
-        ${btn('arsenal', `Arsenal · ${UNLOCKS.filter((u) => unlockStatus(records, u.weapon).done).length}/${UNLOCKS.length} unlocked`)}
-        ${btn('roster', 'Commander Dossiers')}
-        ${btn('open-settings', 'Settings')}
-        ${btn('open-help', 'Field Manual')}
+        ${btn('go', goLabel, { cls: 'primary', key: 'Enter' })}
+        <p class="main-loop">GO <span aria-hidden="true">→</span> BUY STUFF <span aria-hidden="true">→</span> BATTLE</p>
+        <details class="other-menu">
+          <summary data-nav>ALL THE OTHER STUFF</summary>
+          <div class="menu other-menu-items">
+            ${btn('quick', 'Quick Battle — custom opponents')}
+            ${btn('challenges', 'Challenges')}
+            ${btn('daily', `Daily Challenge · ${dailyKey}${daily ? ` · best ${daily.best}` : ''}`)}
+            ${btn('hotseat', 'Hot-Seat — pass and play')}
+            ${btn('sandbox', 'Sandbox — custom rules')}
+            ${btn('editor', 'Map Editor')}
+            ${btn('replays', 'Replays')}
+            ${btn('arsenal', `Arsenal · ${UNLOCKS.filter((u) => unlockStatus(records, u.weapon).done).length}/${UNLOCKS.length} unlocked`)}
+            ${btn('roster', 'Commander Dossiers')}
+            ${btn('open-settings', 'Settings')}
+            ${btn('open-help', 'Field Manual')}
+            ${btn('tournament-new', active ? 'Start Over — abandon current run' : 'Start a fresh five-battle run')}
+          </div>
+        </details>
       </nav>
       <aside class="box records" aria-label="Service record">
         <h2 class="box-title">SERVICE RECORD</h2>

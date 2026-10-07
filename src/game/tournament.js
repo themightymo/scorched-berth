@@ -42,7 +42,7 @@ export function createRun({ seed = makeSeedCode(), now = Date.now(), chassis = '
     chassis: getChassis(chassis).id, // locked for the whole run
     status: 'active',
     round: 0,
-    stage: 'briefing', // briefing | battle | debrief | armory | complete
+    stage: 'armory', // armory | briefing | battle | debrief | complete
     credits: START_CREDITS,
     inventory,
     roundStart: { credits: START_CREDITS, inventory: { ...inventory } },

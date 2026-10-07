@@ -138,6 +138,7 @@ test('a loss still pays enough to rebuild', () => {
 test('tournament: start, save, resume mid-battle, finish, and never double-reward', () => {
   const s = store();
   let run = T.createRun({ seed: 'TOUR-1', now: 1 });
+  assert.equal(run.stage, 'armory', 'the normal run starts by buying gear');
   for (let round = 0; round < T.ROUNDS.length; round++) {
     assert.equal(run.round, round);
     const config = T.roundConfig(run);

@@ -142,22 +142,23 @@ try {
   });
 
   await check('tournament saves after each shot and resumes after reload', async () => {
-    await page.click('[data-action="tournament-new"]');
-    await page.click('[data-action="deploy"]');
+    await page.click('[data-action="go"]');
+    assert(await page.eval("__sb.machine.state === 'armory'"), 'GO did not open the armory');
+    await page.click('[data-action="armory-done"]');
     await page.waitFor("__sb.machine.state === 'aiming'", 30000);
     await page.key(' ');
     await page.waitFor("__sb.machine.state === 'aiming' && __sb.session.state.commands.length >= 2", 60000);
     const digest = await page.eval("JSON.stringify([__sb.session.state.turn, __sb.session.state.commands.length, __sb.session.state.tanks.map(t => t.hp)])");
     await page.goto(`${BASE}/?dev=1`);
-    assert(await page.eval("!!document.querySelector('[data-action=\"tournament-continue\"]')"), 'no continue option');
-    await page.click('[data-action="tournament-continue"]');
+    assert(await page.eval("!!document.querySelector('[data-action=\"go\"]')"), 'no GO option');
+    await page.click('[data-action="go"]');
     await page.click('[data-action="deploy"]');
     const resumed = await page.eval("JSON.stringify([__sb.session.state.turn, __sb.session.state.commands.length, __sb.session.state.tanks.map(t => t.hp)])");
     assert(resumed === digest, `resume mismatch ${resumed} vs ${digest}`);
     await playUntil(page, "__sb.machine.state === 'debrief'");
     const credits = await page.eval('__sb.run.credits');
     await page.goto(`${BASE}/?dev=1`);
-    await page.click('[data-action="tournament-continue"]');
+    await page.click('[data-action="go"]');
     assert(await page.eval("__sb.machine.state === 'debrief'"), 'did not reopen debrief');
     assert(await page.eval('__sb.run.credits') === credits, 'credits changed on reload');
     await page.click('[data-action="t-continue"]');
@@ -176,8 +177,11 @@ try {
     assert(await page.eval('__sb.run.credits') >= 0, 'negative credits');
     assert(Math.abs(await page.eval('window.scrollY') - armoryScroll) < 2, 'purchase reset armory scroll');
     await page.click('[data-action="armory-done"]');
-    assert(await page.eval("__sb.machine.state === 'briefing'"), 'armory did not lead to briefing');
-    await page.key('Escape');
+    assert(await page.eval("['aiming','aiThinking'].includes(__sb.machine.state)"), 'armory did not lead directly to battle');
+    await page.key('p');
+    await page.click('[data-ov="quit"]');
+    await page.eval("document.querySelector('#dlg-confirm .primary').click()");
+    await page.waitFor("__sb.machine.state === 'title'", 5000);
   });
 
   await check('hot-seat hides the next player behind a hand-off screen', async () => {
@@ -241,6 +245,10 @@ try {
     assert(await page.eval(`(() => { const r = document.getElementById('field-frame').getBoundingClientRect(); return r.top === 0 && r.left === 0 && Math.abs(r.width - innerWidth) < 2 && Math.abs(r.height - innerHeight) < 2; })()`), 'battlefield does not fill phone viewport');
     assert(await page.eval("getComputedStyle(document.getElementById('mobile-hud-toggle')).display !== 'none'"), 'mobile loadout button hidden');
     assert(await page.eval("getComputedStyle(document.getElementById('btn-fire')).position !== 'static'"), 'mobile fire control is not over the battlefield');
+    assert(await page.eval(`[...document.querySelectorAll('.topbar .tb-btn:not([hidden])')].every((b) => { const s = getComputedStyle(b); return s.color !== s.backgroundColor; })`), 'mobile top buttons have unreadable contrast');
+    const speedBefore = await page.eval("document.getElementById('btn-speed').textContent.trim()");
+    await page.click('#btn-speed');
+    assert(await page.eval("document.getElementById('btn-speed').textContent.trim()") !== speedBefore, 'battle speed button did not cycle');
     await page.click('#mobile-hud-toggle');
     assert(await page.eval("document.getElementById('hud').classList.contains('mobile-open') && document.getElementById('mobile-hud-toggle').getAttribute('aria-expanded') === 'true'"), 'mobile battle menu did not open');
     assert(await page.eval("document.getElementById('hud').getBoundingClientRect().height > 200"), 'mobile battle menu has no usable drawer');

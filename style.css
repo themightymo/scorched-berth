@@ -96,6 +96,12 @@ code { font-family: var(--mono); color: var(--warn); }
 .title-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 14px; margin-top: 12px; }
 .menu { display: flex; flex-direction: column; gap: 6px; }
 .menu button { width: 100%; }
+.main-loop { margin: 2px 0 8px; color: var(--muted); text-align: center; font-size: 0.8rem; letter-spacing: 1px; }
+.main-loop span { color: var(--warn); }
+.other-menu { border-top: 1px solid var(--line); padding-top: 8px; }
+.other-menu summary { cursor: pointer; color: var(--muted); padding: 7px 10px; letter-spacing: 1px; user-select: none; }
+.other-menu summary:hover { color: var(--accent); }
+.other-menu-items { margin-top: 7px; }
 @media (max-width: 760px) { .title-grid { grid-template-columns: 1fr; } }
 
 /* ── Setup / briefing / cards ────────────────────────────────────────── */
@@ -476,6 +482,9 @@ button:active:not(:disabled) { border-color: var(--accent); }
   body:has(#battle:not([hidden])) .topbar-status { display: none; }
   body:has(#battle:not([hidden])) .topbar-actions { margin-left: auto; pointer-events: auto; }
   body:has(#battle:not([hidden])) .topbar .tb-btn { background: rgba(14, 20, 36, 0.88); }
+  html[data-theme=tandy] body:has(#battle:not([hidden])) .topbar .tb-btn {
+    background: var(--t-gray); color: var(--t-black); border-color: var(--bevel); box-shadow: 2px 2px 0 var(--t-black);
+  }
 
   .battle { position: fixed; z-index: 10; inset: 0; display: block; }
   .battle .field-frame {

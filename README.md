@@ -63,6 +63,7 @@ Add `?dev=1` to the URL to show the AI diagnostics overlay (target, score, predi
 | D | Cycle the defense to deploy when this turn ends |
 | Space, Enter, F | Fire |
 | P, Esc | Pause / resume (freezes shots in flight and AI turns) |
+| S | Cycle battle speed: ×1, ×2, ×3 |
 | H, ? | Field manual |
 | M | Mute |
 | K | Kibitz (you will be told off) |

@@ -104,6 +104,9 @@ export function startApp() {
     const mute = $('btn-mute');
     mute.setAttribute('aria-pressed', String(settings.audio.muted));
     mute.querySelector('span').textContent = settings.audio.muted ? 'Muted' : 'Sound';
+    const speed = $('btn-speed');
+    speed.firstChild.textContent = `×${settings.speed} `;
+    speed.setAttribute('aria-label', `Battle speed, ${settings.speed === 1 ? 'normal' : `${settings.speed} times`}`);
     renderer.invalidate();
   }
   function persistSettings() { saveSettings(store, settings); applySettings(); }
@@ -154,6 +157,7 @@ export function startApp() {
 
   function onStateChange(to) {
     $('btn-pause').hidden = !(LIVE.has(to) || to === 'paused');
+    $('btn-speed').hidden = !(LIVE.has(to) || to === 'paused' || to === 'battleOver');
     audio.music(to === 'title' || to === 'briefing' || to === 'armory' || to === 'debrief' || to === 'tournamentEnd');
   }
 
@@ -574,7 +578,7 @@ export function startApp() {
     showScreen(S.armoryScreen({
       who: settings.playerName, credits: run.credits, inventory: run.inventory, message, locks: armoryLocks(),
       heading: `TOURNAMENT · BEFORE ROUND ${run.round + 1}: ${T.ROUNDS[run.round].name.toUpperCase()}`,
-      nextLabel: `To briefing: round ${run.round + 1}`,
+      nextLabel: `BATTLE — round ${run.round + 1}`,
       history: `Score ${run.score}. Next: ${T.opponentsFor(run, run.round).map((o) => `${getCommander(o.commander).name} (${DIFFICULTY[o.difficulty].name})`).join(', ')}.`,
     }), { focus: !message, scrollTop });
   }
@@ -1215,6 +1219,12 @@ export function startApp() {
       }
       case 'open-settings': return openSettings();
       case 'open-help': return openHelp();
+      case 'go': {
+        if (run?.status === 'active') return openTournamentStage();
+        run = T.createRun({ chassis: settings.playerChassis });
+        T.saveRun(store, run);
+        return openArmory();
+      }
       case 'tournament-new': {
         if (run && run.status === 'active' && !(await confirmDialog(`Abandon the current run (round ${run.round + 1}, score ${run.score}) and start a new tournament?`, 'Start new run'))) return;
         run = T.createRun({ chassis: settings.playerChassis });
@@ -1300,8 +1310,13 @@ export function startApp() {
           return showBriefing(setupToConfig(setupModel, `${setupModel.seed}-R${hot.round}`), 'hotseat', { back: 'title' });
         }
         run = T.finishArmory(run);
+        const config = T.roundConfig(run, profile());
+        run = T.startBattle(run, config);
         T.saveRun(store, run);
-        return openTournamentStage();
+        // The state machine still passes through briefing, but the normal
+        // path deploys immediately: GO → buy stuff → battle.
+        machine.go('briefing');
+        return startBattle(run.battle.config, { mode: 'tournament', battleId: run.battle.id, resumeCommands: run.battle.commands });
       }
       case 'armory-quit': return goTitle();
       case 'hot-gate': hot.shopping.gate = false; return renderHotArmory();
@@ -1448,6 +1463,7 @@ export function startApp() {
   $('in-power').addEventListener('input', (e) => setAim({ power: Number(e.target.value) }));
   $('btn-fire').addEventListener('click', () => { audio.unlock(); fireHuman(); });
   $('btn-pause').addEventListener('click', () => (machine.state === 'paused' ? resumeBattle() : pauseBattle()));
+  $('btn-speed').addEventListener('click', cycleBattleSpeed);
   $('btn-help').addEventListener('click', () => { audio.unlock(); openHelp(); });
   $('btn-settings').addEventListener('click', () => { audio.unlock(); openSettings(); });
   $('btn-mute').addEventListener('click', () => toggleMute());
@@ -1456,6 +1472,13 @@ export function startApp() {
     settings = { ...settings, audio: { ...settings.audio, muted: !settings.audio.muted } };
     persistSettings();
     announce(settings.audio.muted ? 'Sound muted.' : 'Sound on.');
+  }
+  function cycleBattleSpeed() {
+    const next = settings.speed >= 3 ? 1 : settings.speed + 1;
+    settings = { ...settings, speed: next };
+    persistSettings();
+    audio.play('ui');
+    announce(`Battle speed ${next === 1 ? 'normal' : `${next} times`}.`);
   }
 
   function moveFocus(container, dir) {
@@ -1491,6 +1514,7 @@ export function startApp() {
     }
 
     if (session && (LIVE.has(st) || st === 'paused' || st === 'battleOver')) {
+      if (lower === 's' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); cycleBattleSpeed(); return; }
       if (key === 'Escape' && $('hud').classList.contains('mobile-open')) { e.preventDefault(); setMobileHud(false); return; }
       if (key === 'Escape' || lower === 'p') {
         e.preventDefault();
